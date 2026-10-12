@@ -90,7 +90,7 @@
 不需要 Token、不联网即可完整跑通求解链路:
 
 ```bash
-git clone https://github.com/<your-account>/mcd-group-catering.git
+git clone https://github.com/yschdxm/mcd-group-catering.git
 cd mcd-group-catering
 export PYTHONPATH=src        # Windows: $env:PYTHONPATH="src"
 
