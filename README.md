@@ -2,7 +2,7 @@
 
 [![Python](https://img.shields.io/badge/python-3.9%2B-blue)](https://www.python.org/)
 [![Dependencies](https://img.shields.io/badge/dependencies-none-brightgreen)](pyproject.toml)
-[![Tests](https://img.shields.io/badge/tests-63%20passed-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/tests-70%20passed-brightgreen)](tests/)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![MCP](https://img.shields.io/badge/MCP-mcd.mcd.cn-ffc72c)](MCP_INTEGRATION.md)
 
@@ -338,7 +338,7 @@ mcd-group-catering/
 │   └── cli.py                    命令行入口
 ├── tools/
 │   └── regen_fixtures.py         用你自己的门店重新生成离线快照
-├── tests/                        63 个单元测试
+├── tests/                        70 个单元测试
 └── examples/                     示例输出
 ```
 
@@ -352,7 +352,7 @@ python -m pytest -q
 
 ```text
 ...............................................................          [100%]
-63 passed
+70 passed
 ```
 
 覆盖范围:
@@ -361,7 +361,7 @@ python -m pytest -q
 |---|---|
 | `test_nutrition.py` | 文本营养表格解析:BOM、含逗号的说明列、重复行、空返回、模糊匹配 |
 | `test_menu.py` | 角色分类(含炸鸡/瓶装水/蘸酱/套餐等易错项)、份量推断、多编码合并、售罄标记 |
-| `test_solver.py` | 中文需求解析、配额推算、券与促销归一化、参数链规则、求解器预算/忌口/主食配额/可复现性、报告渲染 |
+| `test_solver.py` | 中文需求解析、配额推算、券与促销归一化、参数链规则、求解器预算/忌口/主食配额/可复现性、团餐 gmServiceCode、套餐营养拆解与名称不一致防护、取价失败报错、报告渲染 |
 
 关键断言示例:
 
