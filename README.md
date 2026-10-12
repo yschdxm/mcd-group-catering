@@ -1,5 +1,11 @@
 # 🍟 麦麦团餐统筹官 · MCD Group Catering Orchestrator
 
+[![Python](https://img.shields.io/badge/python-3.9%2B-blue)](https://www.python.org/)
+[![Dependencies](https://img.shields.io/badge/dependencies-none-brightgreen)](pyproject.toml)
+[![Tests](https://img.shields.io/badge/tests-63%20passed-brightgreen)](tests/)
+[![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![MCP](https://img.shields.io/badge/MCP-mcd.mcd.cn-ffc72c)](MCP_INTEGRATION.md)
+
 > 一句话需求 → 一份**可下单、不超预算、不踩忌口**的企业团餐采购清单。
 
 「周五中午 14 个人,预算 480,两人减脂,一个不吃辣,一个不吃牛肉,再来点能分着吃的」
@@ -54,6 +60,7 @@
 - [测试](#测试)
 - [安全与隐私](#安全与隐私)
 - [常见问题](#常见问题)
+- [推广与拉票素材](docs/PROMOTION.md)
 
 ---
 
