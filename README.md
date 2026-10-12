@@ -2,8 +2,9 @@
 
 [![Python](https://img.shields.io/badge/python-3.9%2B-blue)](https://www.python.org/)
 [![Dependencies](https://img.shields.io/badge/dependencies-none-brightgreen)](pyproject.toml)
-[![Tests](https://img.shields.io/badge/tests-70%20passed-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/tests-96%20passed-brightgreen)](tests/)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![Agent Skill](https://img.shields.io/badge/Agent%20Skill-SKILL.md-ffc72c)](SKILL.md)
 [![MCP](https://img.shields.io/badge/MCP-mcd.mcd.cn-ffc72c)](MCP_INTEGRATION.md)
 
 > 一句话需求 → 一份**可下单、不超预算、不踩忌口**的企业团餐采购清单。
@@ -12,7 +13,9 @@
 —— 这句话丢给本项目,30~60 秒后你会拿到一份带优惠券抵扣、营养合计、
 分餐配比和实价核验的采购提案。
 
-本项目基于 [麦当劳中国 MCP Server](https://github.com/M-China/mcd-mcp-server) 开发,
+本项目是一个 **Agent Skill**(见 [`SKILL.md`](SKILL.md)):把它交给任意支持
+Skill 的 AI Agent,用户直接说人话即可;也可以在命令行单独使用。
+底层基于 [麦当劳中国 MCP Server](https://github.com/M-China/mcd-mcp-server) 开发,
 是**麦当劳程序员节创意开发大赛**参赛作品。
 
 ```text
@@ -51,6 +54,7 @@
 
 ## 目录
 
+- [作为 Agent Skill 使用](#作为-agent-skill-使用)
 - [为什么做这个](#为什么做这个)
 - [快速开始](#快速开始)
 - [使用示例](#使用示例)
@@ -61,6 +65,110 @@
 - [安全与隐私](#安全与隐私)
 - [常见问题](#常见问题)
 - [推广与拉票素材](docs/PROMOTION.md)
+
+---
+
+## 作为 Agent Skill 使用
+
+### 这是什么形态
+
+本项目遵循通用 **Agent Skill** 约定:根目录的 [`SKILL.md`](SKILL.md) 是一份
+「角色 + 铁律 + 工作流 + 脚本契约」的说明文档,由 AI Agent 读取后执行;
+真正需要确定性计算的部分(取价、约束求解、核价收敛)交给 `scripts/` 下的脚本。
+
+```text
+用户说人话
+   │
+   ▼
+AI Agent(Claude / WorkBuddy / Cursor / 任何支持 Skill 的宿主)
+   ├─ 读 SKILL.md:知道什么时候该用、必须遵守哪些铁律、按什么流程走
+   ├─ 直接调用麦当劳 MCP 工具(参数链规则写在 SKILL.md 里)
+   └─ 调用 scripts/plan.py 拿确定性结果,再组织成人话回给用户
+```
+
+**为什么这样分工**:价格与配额必须可复现、可核对,不能交给模型估算。
+所以 SKILL.md 的第一条铁律就是「绝不编造价格,任何金额必须来自工具返回」。
+
+### 安装到 Agent 宿主
+
+不同宿主的安装方式不同,但共同点是「把**整个仓库目录**放进去」——
+因为 `SKILL.md` 里引用的 `scripts/` 与 `references/` 必须一起可用。
+
+| 宿主 | 放哪里 |
+|---|---|
+| Claude Code / Claude Desktop | 项目目录放 `.claude/skills/mcd-group-catering/`,或作为 Skill 目录导入 |
+| Cursor / VS Code + Copilot | 放进工作区,Agent 会自动读取根目录 `SKILL.md` |
+| WorkBuddy | 作为自定义 Skill 导入本仓库目录 |
+| 其他宿主 | 只要宿主能读 `SKILL.md` 并能执行 shell 命令即可 |
+
+Skill 的 `name` 是 `mcd-group-catering`,与目录名一致,便于按目录安装。
+
+### 首次使用:让 Agent 先自检
+
+在对话里说:
+
+> 用 mcd-group-catering 这个 Skill,先跑一下环境自检
+
+Agent 会执行 `python scripts/check.py`,一次性确认:
+必需文件是否齐全、MCP Token 是否就绪、能否连上 MCP Server、离线快照是否完整。
+
+### Agent 侧的调用契约
+
+主入口是 `scripts/plan.py`,**stdout 只输出一个 JSON 信封**,
+不需要预先设置 `PYTHONPATH`(脚本内部自举):
+
+```bash
+python scripts/plan.py "14个人 预算480元 不吃辣 两个减脂 12点送到" --json plan.json
+```
+
+成功时:
+
+```json
+{
+  "status": "ok",
+  "ok": true,
+  "plan": {
+    "payableYuan": 219.0, "perPersonYuan": 27.38, "underBudget": true,
+    "verifiedByApi": true, "roleCounts": {"主食": 8, "饮料": 6},
+    "items": [{"productName": "汉堡包", "roleLabel": "主食",
+               "quantity": 5, "unitPriceYuan": 15.0}],
+    "nutrition": {"perPerson": {"kcal": 283, "protein": 14}},
+    "warnings": [], "relaxations": [], "couponsApplied": []
+  },
+  "requirements": {"headcount": 14, "budgetYuan": 480.0},
+  "meta": {"verifiedByApi": true, "source": "麦当劳 MCP 实时接口",
+           "chartCard": "可直接发到群里的一段文本"}
+}
+```
+
+失败时也返回结构化信封(**退出码仍为 0**),并附带可行动的 `hint`:
+
+```json
+{
+  "status": "error",
+  "ok": false,
+  "error": {
+    "type": "missing_token",
+    "message": "未设置麦当劳 MCP Token(环境变量 MCD_MCP_TOKEN)",
+    "hint": "到 https://open.mcd.cn/mcp 登录后激活 Token…或先用 --offline"
+  }
+}
+```
+
+### Agent 的参考文件
+
+`SKILL.md` 会按需引导 Agent 读取这三份文件,避免它凭空推断:
+
+| 文件 | 内容 |
+|---|---|
+| [`references/toolchain.md`](references/toolchain.md) | 工具参数链规则、`code→productCode` 映射、按场景的调用顺序、九个实测坑 |
+| [`references/planning-rules.md`](references/planning-rules.md) | 配比配额公式、目标函数权重、约束让位顺序、预算收敛规则 |
+| [`references/troubleshooting.md`](references/troubleshooting.md) | `缺少参数`、空方案、Token 失效、营养偏低等问题的排查步骤 |
+
+### 也可以完全不用 Agent(纯 CLI)
+
+如果你只想在终端里用,直接看下面的[快速开始](#快速开始)。
+两条路径共用同一个引擎,输出一致。
 
 ---
 
@@ -220,6 +328,7 @@ python -m mcdteam leaderboard            # 抓官方排行榜,看赛道拥挤度
 | `tools` | 列出 MCP Server 暴露的全部工具及其必填参数 |
 | `probe` | 运行 MCP 能力探针,输出可复现的可用性报告 |
 | `scan` | 提交前扫描仓库中是否残留真实凭据 |
+| `agent-plan` | **Agent 专用**:stdout 只输出一个 JSON 信封,失败也返回结构化错误 |
 | `leaderboard` | 抓取官方排行榜(只读,用于评估赛道拥挤度) |
 
 另有一个独立脚本用于**把演示快照换成你自己门店的数据**(快照只含门店编码、
@@ -308,12 +417,22 @@ subject to  cost(plan) ≤ 预算
 
 ```text
 mcd-group-catering/
+├── SKILL.md                      ★ Agent Skill 定义(角色/铁律/工作流/脚本契约)
 ├── README.md                     项目介绍、安装、使用示例、目标用户
 ├── CONTEST_DECLARATION.md        参赛声明(内容与官方模板一致)
 ├── MCP_INTEGRATION.md            实际使用的 MCP Server / Tool / 调用流程 / 踩坑实录
 ├── mcp-config.example.json       脱敏后的 MCP 配置(仅环境变量占位符)
+├── install.ps1                   Windows 一键环境准备
 ├── LICENSE                       MIT
 ├── pyproject.toml                打包配置(无第三方运行时依赖)
+├── scripts/                      ★ Agent 侧入口(stdout 纯 JSON,自动处理 PYTHONPATH)
+│   ├── plan.py                       一句话需求 → 方案 JSON 信封
+│   ├── check.py                      环境自检(必需文件 / Token / 连通性)
+│   └── _bootstrap.py                 PYTHONPATH 自举 + UTF-8 输出
+├── references/                   ★ Agent 按需查阅的参考资料
+│   ├── toolchain.md                  参数链规则与九个实测坑
+│   ├── planning-rules.md             配比公式、目标函数权重、让位与收敛规则
+│   └── troubleshooting.md            故障排查步骤
 ├── fixtures/                     真实抓取的离线快照,保证一键可复现
 │   ├── nutrition_raw.txt             160 条官方营养数据
 │   ├── query-meals.1950564.json      门店 117 个在售编码与分类
@@ -338,7 +457,7 @@ mcd-group-catering/
 │   └── cli.py                    命令行入口
 ├── tools/
 │   └── regen_fixtures.py         用你自己的门店重新生成离线快照
-├── tests/                        70 个单元测试
+├── tests/                        96 个单元测试
 └── examples/                     示例输出
 ```
 
@@ -352,7 +471,7 @@ python -m pytest -q
 
 ```text
 ...............................................................          [100%]
-70 passed
+96 passed
 ```
 
 覆盖范围:
@@ -362,6 +481,8 @@ python -m pytest -q
 | `test_nutrition.py` | 文本营养表格解析:BOM、含逗号的说明列、重复行、空返回、模糊匹配 |
 | `test_menu.py` | 角色分类(含炸鸡/瓶装水/蘸酱/套餐等易错项)、份量推断、多编码合并、售罄标记 |
 | `test_solver.py` | 中文需求解析、配额推算、券与促销归一化、参数链规则、求解器预算/忌口/主食配额/可复现性、团餐 gmServiceCode、套餐营养拆解与名称不一致防护、取价失败报错、报告渲染 |
+| `test_skill_conformance.py` | Skill 形态合规:frontmatter 规范、触发词覆盖、参考文件存在性、脚本自举、必需文件齐全、声明的铁律与免责声明是否在册 |
+| `test_agent_entrypoints.py` | 真的把脚本当子进程跑:stdout 是纯 JSON、失败返回结构化信封、`--json` 落盘可用 |
 
 关键断言示例:
 

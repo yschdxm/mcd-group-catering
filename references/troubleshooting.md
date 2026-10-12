@@ -1,0 +1,155 @@
+# 故障排查(Agent 用)
+
+> 遇到问题时**按顺序**排查,不要跳步、不要靠猜。
+> 每一步都能单独验证,避免把环境问题和业务问题混在一起。
+
+---
+
+## 第 0 步:永远先跑自检
+
+```bash
+python scripts/check.py
+```
+
+它会一次性告诉你:必需文件是否齐全、Token 是否就绪、能否连上 MCP、快照是否完整。
+
+**退出码 0 = 就绪;1 = 有问题并已列出原因。**
+
+---
+
+## 一、`缺少参数`(最常见的报错)
+
+这是麦当劳 MCP **最误导**的错误文案。以下三种情况都会返回它:
+
+| 原因 | 怎么确认 | 怎么修 |
+|---|---|---|
+| `storeCode` 格式对但门店不存在 | 换一个确定存在的门店编码重试 | 用 `--city` 让脚本重新搜店,或从麦当劳 App 里核对门店编码 |
+| 团餐/外送/得来速漏传 `beCode` | 看 `context.storeContext.beCode` 是否为空 | 让脚本自己解析、不要手工指定 `--be-code` |
+| 企业团餐漏传 `gmServiceCode` | 报错文案通常是 `600061 团餐助餐服务参数缺失` | 需要 `query-meal-assistance`;本项目已自动处理,若仍报错见第四节 |
+
+**不要**通过反复改参数试错。先确认门店是否真实存在。
+
+---
+
+## 二、金额是 `0` 或清单为空
+
+| 现象 | 原因 | 处理 |
+|---|---|---|
+| `status=error` + `error.type=empty_plan` | 预算过低,或忌口过滤后无可用餐品 | 提高预算、减少 `--avoid`,或提高 `--effort` |
+| `error.type=business_rejected` 且提到取价 | 参数链不匹配(见第一节) | 按第一节排查 |
+| 方案非空但 `subtotalYuan=0` | 理论上不会出现;若出现说明 `collect_price_map` 保护失效 | 直接报告为 bug,并附上 `context.calls` |
+
+**本项目已保证**:取价全军覆没时**不会**静默产出空方案,而是抛出明确错误。
+
+---
+
+## 三、`error.type=missing_token` / `auth_failed`
+
+```
+error.type = missing_token  →  环境变量 MCD_MCP_TOKEN 未设置
+error.type = auth_failed    →  Token 无效或已过期
+```
+
+**修复步骤**:
+
+1. 打开 https://open.mcd.cn/mcp
+2. 右上角【登录】→ 手机号验证
+3. 点【控制台】→【激活】→ 同意服务协议 → 一键复制 Token
+4. 设置环境变量:
+
+   ```powershell
+   # Windows PowerShell
+   $env:MCD_MCP_TOKEN = "你的Token"
+   ```
+
+   ```bash
+   # macOS / Linux
+   export MCD_MCP_TOKEN="你的Token"
+   ```
+
+5. 重新跑 `python scripts/check.py` 确认
+
+> 若用户暂时拿不到 Token,可先用 `--offline` + `--store 1950564` 跑内置快照演示,
+> 但**必须**告知用户:离线模式的价格来自快照、未实时核价,营养数据也不含套餐拆解。
+
+---
+
+## 四、团餐场景报「助餐服务参数缺失」
+
+企业团餐(`beType=6`)需要 `gmServiceCode`。本项目已自动处理:
+
+1. 选店后调用 `query-meal-assistance`
+2. 取 `enable != false` 且 `selected == true` 的那一项(例如 `GMS001 保鲜速达`)
+3. 自动透传给 `calculate-price`
+
+**若仍然报错**,检查 `context.storeContext.gmServiceCode` 是否为空。
+为空通常意味着 `query-meal-assistance` 也失败了 —— 那说明门店/`beCode` 本身就不对。
+
+> 注意:`query-meals` 在没有 `gmServiceCode` 时**仍能成功返回菜单**,
+> 所以这个错误只会在取价阶段暴露。
+
+---
+
+## 五、营养数据看起来严重偏低
+
+看 `plan.warnings` 里有没有这两条:
+
+| 提示 | 含义 | 你要怎么说 |
+|---|---|---|
+| `有 N 件餐品缺少官方营养数据,营养合计为下限值而非精确值` | 部分餐品无营养数据,未按 0 计入 | 说明合计是下限值 |
+| `本单所有主食(均为套餐类)都没有官方营养数据…数值严重偏低` | 主食全是套餐,营养完全缺失 | **必须**强调该数值不可用,而不是照读 |
+
+**离线模式(`--offline`)下这个情况是预期的**,因为无法调用 `query-meal-detail`。
+
+在线模式下若出现,说明套餐拆解也失败了,检查 `context.calls` 里有没有
+`query-meal-detail` 的记录。
+
+---
+
+## 六、价格与预期不符 / 超预算
+
+这是**正常现象**,不是 bug。看 `plan.warnings`:
+
+```
+门店实时原价 ¥231.70 与本地估算 ¥214.50 相差 ¥17.20(促销、规格或取餐方式导致),已以门店价为准
+为回到预算内,已减少:苹果片×2
+```
+
+| 字段 | 含义 |
+|---|---|
+| `plan.localEstimateYuan` | 本地按单价估算的原价 |
+| `plan.subtotalYuan` | 门店实时原价(已核价时以它为准) |
+| `plan.verifiedByApi = false` | **金额是估算**,必须向用户说明 |
+| `plan.warnings` 里的 `auto_cut` | 已自动削减的条目 |
+
+**你必须把 `warnings` 原文转述给用户**,不得为了方案好看而隐去。
+
+---
+
+## 七、价格合理但计算结果每次都一样/不一样
+
+- **一样**:正常。求解器用固定随机种子,相同输入必然相同结果。
+- **不一样**:检查菜单快照是否变了(门店上下架),或 `--effort` 不同。
+
+---
+
+## 八、报错信息收集清单(向用户反馈 bug 时附上)
+
+若确实疑似 bug,请附上:
+
+1. 完整命令行(去掉 Token)
+2. `envelope.error` 全文(含 `type` / `message` / `tool` / `traceId`)
+3. `envelope.context.calls`(每步调用的状态码与耗时)
+4. `python scripts/check.py` 的输出
+
+`traceId` 是麦当劳服务端的问题追踪号,是他们定位问题的关键。
+
+---
+
+## 九、绝对不要做的事
+
+- ❌ 不要因为报错就**自己估算价格**填进结果
+- ❌ 不要删掉或改写 `warnings` / `relaxations`
+- ❌ 不要用其他门店的数据顶替当前门店
+- ❌ 不要在未验证的情况下说"下单成功"
+- ❌ 不要把 Token 内容写进输出或文件

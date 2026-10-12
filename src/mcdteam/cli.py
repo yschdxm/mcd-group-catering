@@ -93,6 +93,24 @@ def _build_parser() -> argparse.ArgumentParser:
     lb.add_argument("--pages", type=int, default=6, help="抓取页数,每页 100 条")
     lb.add_argument("--limit", type=int, default=25, help="展示前 N 名")
 
+    # Agent 专用入口:stdout 只输出一个 JSON 信封,便于程序化消费
+    ap = sub.add_parser("agent-plan",
+                        help="Agent 入口:输出统一 JSON 信封,失败也返回结构化错误")
+    ap.add_argument("text", nargs="*", help="自然语言需求")
+    ap.add_argument("--headcount", type=int)
+    ap.add_argument("--budget", type=float)
+    ap.add_argument("--per-person", type=float)
+    ap.add_argument("--mode")
+    ap.add_argument("--at", dest="reserve_at")
+    ap.add_argument("--avoid", action="append", default=[])
+    ap.add_argument("--prefer", action="append", default=[])
+    ap.add_argument("--max-kcal", type=float)
+    ap.add_argument("--min-protein", type=float)
+    ap.add_argument("--effort", type=int, default=48)
+    ap.add_argument("--max-items", type=int, default=0)
+    ap.add_argument("--no-verify", action="store_true")
+    ap.add_argument("--json", dest="json_path", help="同时把信封写入该文件")
+
     return parser
 
 
@@ -257,6 +275,110 @@ def cmd_plan(args: argparse.Namespace, config: AppConfig) -> int:
     return 0 if plan.lines else 1
 
 
+def agent_plan(args: argparse.Namespace, config: AppConfig) -> Dict[str, Any]:
+    """供 Agent 调用的方案生成:永远返回结构化字典,绝不抛异常、绝不打印终端卡片。
+
+    与 :func:`cmd_plan` 的区别:
+
+    * **单一契约**:无论成功失败都返回同一个信封结构,Agent 只需判断
+      ``status`` 与 ``ok``,不需要解析人类可读文本;
+    * **失败也带修复提示**:``error.hint`` 里给出下一步该做什么
+      (例如 Token 无效就提示去哪里申请);
+    * **不走终端渲染**:终端卡片是给人看的,Agent 读 JSON 即可。
+
+    这是 `scripts/plan.py` 的实现核心,保证脚本与库共用同一段逻辑。
+    """
+    text = " ".join(args.text or [])
+    requirements = build_requirements(text, **_plan_overrides(args))
+    envelope: Dict[str, Any] = {
+        "status": "error",
+        "ok": False,
+        "command": "plan",
+        "input": text,
+        "error": None,
+        "plan": None,
+        "requirements": requirements.to_dict(),
+        "context": None,
+    }
+
+    if requirements.headcount <= 0:
+        envelope["error"] = {
+            "type": "invalid_input",
+            "message": "人数必须大于 0",
+            "hint": "请向用户追问本单人数,再用 --headcount 传入",
+        }
+        return envelope
+
+    if not config.offline and not config.has_token:
+        envelope["error"] = {
+            "type": "missing_token",
+            "message": f"未设置麦当劳 MCP Token(环境变量 {TOKEN_ENV})",
+            "hint": ("到 https://open.mcd.cn/mcp 登录后激活 Token,"
+                     "然后设置环境变量 MCD_MCP_TOKEN;"
+                     "或先用 --offline 跑内置快照演示"),
+        }
+        return envelope
+
+    session = Session(config)
+    try:
+        plan = session.plan(requirements, verify=not args.no_verify)
+    except MCPAuthError as exc:
+        envelope["error"] = {
+            "type": "auth_failed",
+            "message": str(exc.message),
+            "hint": "Token 无效或过期,请到 https://open.mcd.cn/mcp 控制台重新获取",
+        }
+        return envelope
+    except MCPBusinessError as exc:
+        envelope["error"] = {
+            "type": "business_rejected",
+            "message": str(exc.message),
+            "tool": exc.tool,
+            "traceId": exc.trace_id,
+            "hint": ("参数与门店不匹配时麦当劳会返回「缺少参数」。请确认:"
+                     "① --store 是真实存在的门店编码;"
+                     "② 团餐/外送/得来速场景需要 beCode;"
+                     "③ 企业团餐还需要 gmServiceCode。"
+                     "详见 references/troubleshooting.md"),
+        }
+        return envelope
+    except MCPError as exc:
+        envelope["error"] = {
+            "type": "mcp_error",
+            "message": str(exc),
+            "tool": getattr(exc, "tool", ""),
+            "hint": "检查网络与 Token;或先用 --offline 验证脚本本身可用",
+        }
+        return envelope
+
+    if not plan.lines:
+        envelope["error"] = {
+            "type": "empty_plan",
+            "message": "求解结果为空,未生成任何采购项",
+            "hint": ("通常是预算过低或忌口过滤后无可用餐品。"
+                     "可提高预算、减少 --avoid 条件,或提高 --effort 重试"),
+        }
+        return envelope
+
+    envelope["status"] = "ok"
+    envelope["ok"] = True
+    envelope["plan"] = plan.to_dict()
+    envelope["context"] = session.trace_dict()
+    envelope["meta"] = {
+        "offline": config.offline,
+        "verifiedByApi": plan.verified_by_api,
+        "source": session.snapshot_note(),
+        "storeDescription": session.store_context.describe() if session.store_context else "",
+        "chartCard": render_chat_card(plan, requirements),
+    }
+    if not plan.verified_by_api:
+        envelope["meta"]["notice"] = (
+            "本次金额为本地按单价估算,未经 calculate-price 回算,"
+            "必须向用户说明金额为预估"
+        )
+    return envelope
+
+
 def _plan_overrides(args: argparse.Namespace) -> Dict[str, Any]:
     avoid_map = {
         "spicy": "avoid_spicy", "beef": "avoid_beef", "pork": "avoid_pork",
@@ -402,6 +524,25 @@ def cmd_probe(args: argparse.Namespace, config: AppConfig) -> int:
     return 0 if ok else 1
 
 
+def cmd_agent_plan(args: argparse.Namespace, config: AppConfig) -> int:
+    """把 :func:`agent_plan` 的结果打到 stdout;失败也返回 0 退出码。
+
+    为什么失败也用 0:Agent 习惯把非零退出码当成"命令本身坏了"并放弃重试。
+    这里的失败是**业务失败**(需求不全、Token 缺失),信封里已经带了
+    ``status`` 与 ``error.hint``,让 Agent 继续读 JSON 比让它崩掉更有用。
+    """
+    envelope = agent_plan(args, config)
+    payload = json.dumps(envelope, ensure_ascii=False, indent=2, default=str)
+    if getattr(args, "json_path", None):
+        try:
+            with open(args.json_path, "w", encoding="utf-8") as handle:
+                handle.write(payload)
+        except OSError as exc:  # pragma: no cover - 磁盘异常
+            print(f"  ⚠ 无法写入 {args.json_path}:{exc}", file=sys.stderr)
+    print(payload)
+    return 0
+
+
 # ----------------------------------------------------------------------- main
 def main(argv: Optional[List[str]] = None) -> int:
     parser = _build_parser()
@@ -419,6 +560,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     handlers = {
         "doctor": cmd_doctor,
         "plan": cmd_plan,
+        "agent-plan": cmd_agent_plan,
         "menu": cmd_menu,
         "tools": cmd_tools,
         "probe": cmd_probe,
