@@ -134,9 +134,43 @@ cancel-order(orderId, cancelReasonCode)        → 有副作用
 ### `query-order` / `cancel-order`
 
 ```
-query-order(orderId)                     → 只读;返回结构见 create-order 的 orderDetail
+query-order(orderId)                     → 只读
 cancel-order(orderId, cancelReasonCode)  → 返回 {"cancelResult": true, "orderId": "..."}
 ```
+
+**`query-order` 的 `orderStatus` 状态码**(取自工具 outputSchema 的权威说明):
+
+| 码 | 含义 |
+|---|---|
+| `1` | 待支付 |
+| `2` | 配餐中-已支付 |
+| `4` | 配送中 |
+| `6` | 已完成 |
+| `7` | 已取消 |
+| `8` | 已评价 |
+| `10` | 配餐中-餐厅确认配餐中 |
+
+`query-order` 的完整字段还包括:`deliveryInfo`、`lockerCode`、`lockerQrCode`
+(取餐柜)、`mealAssistance`(助餐服务)、`realPackingFeeTotalPrice`、`tablewarePrice`。
+
+⚠️ **注意 `order-list` 与 `query-order` 的差异**:`order-list` 只返回
+**中文状态文案**(如 `待支付`、`订单已取消`、`订单已完成`),**没有状态码**。
+所以用 `order-list` 找未支付订单时必须走文案判断,不能依赖数字码。
+
+### `order-list` 的返回结构(实测)
+
+```
+{"list": [
+  {"orderId": "...", "orderType": "1", "createTime": "...",
+   "beType": "1", "beCode": "", "storeCode": "...", "storeName": "...",
+   "orderStatus": "待支付",                    ← 中文文案,无状态码
+   "orderProductList": [{productCode, ...}],
+   "realTotalAmount": "40"}
+]}
+```
+
+**实测确认:「未支付」订单会被 `order-list` 返回**(`orderStatus = "待支付"`),
+因此可以据此找出全部被遗忘的未支付订单并批量清理。
 
 **麦当劳 MCP 没有沙箱/测试环境** —— 上述 schema 中不存在任何 dry-run 或测试标志,
 `create-order` 成功即产生真实待支付订单。本项目因此默认 dry-run,

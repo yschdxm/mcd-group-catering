@@ -33,6 +33,12 @@ from mcdteam.order import (  # noqa: E402
     build_order_draft,
     describe_cancel_reasons,
     describe_order,
+    is_pending_payment,
+    ORDER_STATUS_CODES,
+    pending_payment_orders,
+    status_group,
+    summarise_order,
+    wait_for_payment,
     pick_take_way,
     submit_order,
     validate_store_address,
@@ -447,3 +453,161 @@ def test_describe_order_marks_cancelled():
     text = describe_order({"orderId": "X5", "orderStatus": "订单已取消", "status": "60"})
     assert "已取消" in text
     assert "不产生任何消费" in text
+
+
+# ------------------------------------------------------- 订单状态语义与订单列表
+@pytest.mark.parametrize("text,group", [
+    ("待支付", "pending_payment"),
+    ("未支付", "pending_payment"),
+    ("配餐中-已支付", "paid"),
+    ("配送中", "paid"),
+    ("已完成", "done"),
+    ("已评价", "done"),
+    ("订单已取消", "cancelled"),
+    ("已关闭", "cancelled"),
+])
+def test_status_group_mapping(text, group):
+    assert status_group(text) == group
+
+
+def test_status_group_unknown_returns_empty():
+    """无法识别的状态必须返回空串,让调用方选择「不动它」,而不是猜。"""
+    assert status_group("某种新状态") == ""
+    assert status_group("") == ""
+
+
+def test_status_codes_match_official_schema():
+    """status 码取自 query-order 的 outputSchema 说明。"""
+    assert ORDER_STATUS_CODES["1"] == "待支付"
+    assert ORDER_STATUS_CODES["6"] == "已完成"
+    assert ORDER_STATUS_CODES["7"] == "已取消"
+
+
+def test_is_pending_payment():
+    assert is_pending_payment({"orderStatus": "待支付"}) is True
+    assert is_pending_payment({"orderStatus": "订单已完成"}) is False
+    assert is_pending_payment({"orderStatus": "订单已取消"}) is False
+    assert is_pending_payment({}) is False
+    assert is_pending_payment(None) is False
+
+
+class FakeOrderListClient:
+    """带历史订单列表的假客户端。"""
+
+    def __init__(self, orders, query_sequence=None):
+        self.orders = orders
+        self.query_sequence = list(query_sequence or [])
+        self.cancel_calls = []
+        self.query_calls = []
+
+    def order_list(self):
+        return list(self.orders)
+
+    def query_order(self, order_id):
+        self.query_calls.append(order_id)
+        if self.query_sequence:
+            return self.query_sequence.pop(0)
+        return {"orderId": order_id, "orderStatus": "待支付"}
+
+    def cancel_order(self, order_id, cancel_reason_code=-1):
+        self.cancel_calls.append({"orderId": order_id, "reason": cancel_reason_code})
+        return {"cancelResult": True, "orderId": order_id}
+
+
+def test_pending_payment_orders_filters_and_sorts():
+    client = FakeOrderListClient([
+        {"orderId": "A", "orderStatus": "订单已完成", "createTime": "2026-01-01 10:00:00"},
+        {"orderId": "B", "orderStatus": "待支付", "createTime": "2026-02-01 10:00:00"},
+        {"orderId": "C", "orderStatus": "订单已取消", "createTime": "2026-03-01 10:00:00"},
+        {"orderId": "D", "orderStatus": "待支付", "createTime": "2026-04-01 10:00:00"},
+    ])
+    pending = pending_payment_orders(client)
+    assert [o["orderId"] for o in pending] == ["D", "B"], "只留待支付,并按创建时间倒序"
+
+
+def test_pending_payment_orders_empty():
+    client = FakeOrderListClient([{"orderId": "A", "orderStatus": "订单已完成"}])
+    assert pending_payment_orders(client) == []
+
+
+def test_summarise_order_is_one_line():
+    text = summarise_order({
+        "orderStatus": "待支付", "realTotalAmount": "40",
+        "orderProductList": [{"productName": "巨无霸", "quantity": 2},
+                             {"productName": "中薯条", "quantity": 1}],
+    })
+    assert "待支付" in text and "40" in text
+    assert "巨无霸×2" in text
+    assert "\n" not in text
+
+
+# --------------------------------------------------------------------- 轮询
+def test_wait_returns_immediately_on_terminal_state():
+    client = FakeOrderListClient([], query_sequence=[
+        {"orderId": "X", "orderStatus": "已完成"},
+    ])
+    slept = []
+    result = wait_for_payment(client, "X", timeout=60, interval=5, sleep=slept.append)
+    assert result["group"] == "done"
+    assert result["paid"] is True
+    assert result["polls"] == 1
+    assert slept == [], "已到终态就不该再睡"
+
+
+def test_wait_polls_until_paid():
+    client = FakeOrderListClient([], query_sequence=[
+        {"orderId": "X", "orderStatus": "待支付"},
+        {"orderId": "X", "orderStatus": "待支付"},
+        {"orderId": "X", "orderStatus": "配餐中-已支付"},
+    ])
+    slept = []
+    result = wait_for_payment(client, "X", timeout=600, interval=5, sleep=slept.append)
+    assert result["paid"] is True
+    assert result["group"] == "paid"
+    assert result["polls"] == 3
+    assert len(slept) == 2, "每次未到终态才睡一次"
+
+
+def test_wait_times_out_gracefully(monkeypatch):
+    """超时要如实返回 timedOut,而不是抛异常或谎报成功。
+
+    用一个假的 ``time.monotonic`` 让「已经过了很久」成立,避免真的等待。
+    """
+    import time as real_time
+    import mcdteam.order as order_module  # noqa: F401  确保模块已加载
+
+    ticks = {"n": 0.0}
+
+    def fake_monotonic():
+        ticks["n"] += 100.0     # 每问一次时间就推进 100 秒
+        return ticks["n"]
+
+    monkeypatch.setattr(real_time, "monotonic", fake_monotonic)
+    client = FakeOrderListClient([], query_sequence=[
+        {"orderId": "X", "orderStatus": "待支付"},
+    ] * 50)
+    result = wait_for_payment(client, "X", timeout=150, interval=1,
+                              sleep=lambda _s: None)
+    assert result["timedOut"] is True
+    assert result["paid"] is False
+    assert result["orderStatus"] == "待支付"
+
+
+def test_wait_reports_query_error_without_crashing():
+    class BrokenClient:
+        def query_order(self, order_id):
+            raise MCPBusinessError("订单号不存在!", tool="query-order")
+
+    result = wait_for_payment(BrokenClient(), "X", timeout=10, interval=1,
+                              sleep=lambda _s: None)
+    assert result["error"] == "订单号不存在!"
+    assert result["paid"] is False
+
+
+def test_wait_cancelled_order():
+    client = FakeOrderListClient([], query_sequence=[
+        {"orderId": "X", "orderStatus": "订单已取消"},
+    ])
+    result = wait_for_payment(client, "X", timeout=60, interval=5, sleep=lambda _s: None)
+    assert result["cancelled"] is True
+    assert result["paid"] is False

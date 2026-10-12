@@ -180,15 +180,43 @@ python -m mcdteam order pay "<需求>" --store <门店> --mode <方式> --pay
 下单成功后，把返回的 `orderId` 与支付链接**原样**给用户，并提示：
 "可通过支付链接扫码或打开麦当劳 APP 完成支付"。
 
-#### 6.3 下单后的查询与取消
+#### 6.3 下单后的查询、等待与清理
 
 ```bash
-python -m mcdteam order status --order-id <订单号>     # 只读，可随时调用
-python -m mcdteam order list                           # 只读，历史订单
-python -m mcdteam order cancel --order-id <订单号> --reason-code 1   # 有副作用，需用户确认
+python -m mcdteam order status --order-id <订单号>     # 只读:可读明细(含套餐子项)
+python -m mcdteam order wait --order-id <订单号>       # 只读:轮询到已支付/终态
+python -m mcdteam order list                           # 只读:历史订单
+python -m mcdteam order cleanup                        # 默认只列出未支付订单(dry-run)
+python -m mcdteam order cleanup --cancel --yes         # 真正取消未支付订单
+python -m mcdteam order cancel --order-id <订单号> --reason-code 1   # 单笔取消
 ```
 
 取消原因码：`1`=改主意了 `2`=重复下单 `3`=点错了 `4`=地址电话填错 `5`=送达时间选错 `-1`=其它。
+
+**`order wait` 的使用时机**：把支付链接发给用户后，可以说
+"付完告诉我一声，我帮你确认到账"。用户回复"付好了"时，用 `order wait` 轮询
+（默认最长 180 秒），它会一直查到「已支付」或终态为止。
+
+**`order cleanup` 的使用时机**：用户问"我是不是有几单没付""订单列表好乱"时。
+先说清楚再动手 —— **它默认只列出不取消**；要取消必须加 `--cancel`，
+并且**先让用户确认**（或让用户自己加 `--yes`）。
+未支付订单即便不取消也会自动过期关闭、不产生扣款，所以这属于"整理"而非"救火"。
+
+**订单状态语义**（`query-order` 的 `status` 码，取自官方 schema）：
+
+| 码 | 含义 |
+|---|---|
+| `1` | 待支付 |
+| `2` | 配餐中-已支付 |
+| `4` | 配送中 |
+| `6` | 已完成 |
+| `7` | 已取消 |
+| `8` | 已评价 |
+| `10` | 配餐中-餐厅确认配餐中 |
+
+注意 `order-list` 只返回**中文状态文案**（如「待支付」「订单已取消」），
+没有状态码，所以判断要走文案。遇到无法识别的文案时**不要猜**，
+如实告诉用户"状态未知"，让用户自己去麦当劳 App 确认。
 
 #### 6.4 金额不一致怎么办
 
@@ -226,9 +254,12 @@ python -m mcdteam order cancel --order-id <订单号> --reason-code 1   # 有副
 | `python -m mcdteam menu --store <码>` | 看菜单与性价比 | 只读 |
 | `python -m mcdteam order preview "<需求>"` | 装配下单请求 | **无（dry-run）** |
 | `python -m mcdteam order pay "<需求>" --pay` | 真实下单 | ⚠️ **产生真实订单** |
-| `python -m mcdteam order status --order-id <号>` | 查订单状态 | 只读 |
+| `python -m mcdteam order status --order-id <号>` | 查订单可读明细 | 只读 |
+| `python -m mcdteam order wait --order-id <号>` | 轮询到已支付/终态 | 只读 |
 | `python -m mcdteam order list` | 历史订单 | 只读 |
-| `python -m mcdteam order cancel --order-id <号>` | 取消订单 | ⚠️ 有副作用 |
+| `python -m mcdteam order cleanup` | 列出未支付订单 | 只读(dry-run) |
+| `python -m mcdteam order cleanup --cancel --yes` | 批量取消未支付订单 | ⚠️ 有副作用 |
+| `python -m mcdteam order cancel --order-id <号>` | 取消单笔订单 | ⚠️ 有副作用 |
 
 ## 边界
 

@@ -29,7 +29,9 @@ from .order import (
     OrderSafetyError,
     build_order_draft,
     describe_order,
+    pending_payment_orders,
     submit_order,
+    wait_for_payment,
 )
 from .report.render import render_chat_card, render_markdown, render_terminal
 from .solve.constraints import CateringRequirements, parse_requirements
@@ -169,6 +171,24 @@ def _build_parser() -> argparse.ArgumentParser:
     cn.add_argument("--json", dest="json_path")
 
     order_sub.add_parser("list", help="查询历史订单(只读)")
+
+    cl = order_sub.add_parser("cleanup", help="列出并清理被遗忘的未支付订单")
+    cl.add_argument("--cancel", action="store_true",
+                    help="真正取消;不加则只列出(默认 dry-run)")
+    cl.add_argument("--reason-code", type=int, default=1,
+                    help="取消原因码,默认 1=改主意了")
+    cl.add_argument("--yes", action="store_true", help="跳过确认")
+    cl.add_argument("--older-than", type=float, default=0.0,
+                    help="只处理创建时间早于 N 分钟前的订单,默认 0(全部)")
+    cl.add_argument("--json", dest="json_path")
+
+    wt = order_sub.add_parser("wait", help="轮询订单状态直到已支付/终态(只读)")
+    wt.add_argument("--order-id", required=True)
+    wt.add_argument("--timeout", type=float, default=180.0,
+                    help="最长等待秒数,默认 180")
+    wt.add_argument("--interval", type=float, default=5.0,
+                    help="轮询间隔秒数,默认 5")
+    wt.add_argument("--json", dest="json_path")
 
     return parser
 
@@ -458,6 +478,93 @@ def _plan_and_session(args: argparse.Namespace, config: AppConfig):
     return session, plan, requirements
 
 
+def _cmd_order_cleanup(args: argparse.Namespace, config: AppConfig) -> int:
+    """列出并（可选）取消被遗忘的未支付订单。
+
+    团餐场景很容易积累废单:方案排好、订单创建了,结果预算没批下来或临时换店,
+    订单就挂在那儿。虽然未支付订单会自动过期,但混在列表里影响排查。
+
+    **默认只列出,不取消**（dry-run）。真正取消需要 ``--cancel``。
+    """
+    import datetime as _dt
+
+    session = Session(config)
+    try:
+        pending = pending_payment_orders(session.client)
+    except MCPError as exc:
+        print(f"✘ 查询历史订单失败:{exc}", file=sys.stderr)
+        return 3
+
+    if args.older_than:
+        cutoff = _dt.datetime.now() - _dt.timedelta(minutes=args.older_than)
+        kept = []
+        for order in pending:
+            try:
+                created = _dt.datetime.strptime(
+                    str(order.get("createTime") or ""), "%Y-%m-%d %H:%M:%S")
+            except ValueError:
+                kept.append(order)      # 时间解析不了就不筛掉,交给用户判断
+                continue
+            if created <= cutoff:
+                kept.append(order)
+        pending = kept
+
+    if not pending:
+        print("✔ 没有未支付订单,无需清理")
+        return 0
+
+    print(f"发现 {len(pending)} 笔未支付订单")
+    print("─" * 78)
+    print(f"{'订单号':<32}{'门店':<24}{'应付':>8}  创建时间")
+    print("─" * 78)
+    for order in pending:
+        store = str(order.get("storeName") or order.get("storeCode") or "")[:22]
+        amount = order.get("realTotalAmount") or order.get("totalAmount") or "0"
+        print(f"{str(order.get('orderId', '')):<32}{store:<24}"
+              f"¥{amount:>7}  {order.get('createTime', '')}")
+    print("─" * 78)
+
+    if not args.cancel:
+        print("  ⏸ dry-run:未取消任何订单")
+        print(f"  要真正取消请加 --cancel（原因码 {args.reason_code}="
+              f"{CANCEL_REASONS.get(args.reason_code, '其它')}）")
+        print("  ℹ 未支付订单即便不取消也会自动过期关闭,不会产生扣款")
+        if args.json_path:
+            with open(args.json_path, "w", encoding="utf-8") as handle:
+                json.dump({"dryRun": True, "orders": pending}, handle,
+                          ensure_ascii=False, indent=2, default=str)
+        return 0
+
+    if not args.yes:
+        try:
+            answer = input(f"确认取消这 {len(pending)} 笔未支付订单?[y/N] ").strip().lower()
+        except EOFError:
+            answer = ""
+        if answer not in ("y", "yes", "是"):
+            print("已取消操作,未做任何改动")
+            return 0
+
+    cancelled, failed = [], []
+    for order in pending:
+        order_id = str(order.get("orderId", ""))
+        try:
+            session.client.cancel_order(order_id, args.reason_code)
+            cancelled.append(order_id)
+            print(f"  ✔ 已取消 {order_id}")
+        except MCPError as exc:
+            failed.append((order_id, exc.message))
+            print(f"  ✘ 取消失败 {order_id}:{exc.message}", file=sys.stderr)
+
+    print("─" * 78)
+    print(f"  结果:成功取消 {len(cancelled)} 笔,失败 {len(failed)} 笔")
+    if args.json_path:
+        with open(args.json_path, "w", encoding="utf-8") as handle:
+            json.dump({"dryRun": False, "cancelled": cancelled,
+                       "failed": [{"orderId": o, "message": m} for o, m in failed]},
+                      handle, ensure_ascii=False, indent=2, default=str)
+    return 0 if not failed else 1
+
+
 def cmd_order(args: argparse.Namespace, config: AppConfig) -> int:
     """下单相关子命令。
 
@@ -466,6 +573,38 @@ def cmd_order(args: argparse.Namespace, config: AppConfig) -> int:
     ``--pay`` + 环境变量 ``MCD_ALLOW_REAL_ORDER=1``。
     """
     action = args.order_action
+
+    if action == "cleanup":
+        return _cmd_order_cleanup(args, config)
+
+    if action == "wait":
+        session = Session(config)
+        print(f"⏳ 轮询订单 {args.order_id}(最长 {args.timeout:g} 秒,"
+              f"每 {args.interval:g} 秒一次)")
+        result = wait_for_payment(
+            session.client, args.order_id,
+            timeout=args.timeout, interval=args.interval,
+            progress=lambda m: print(f"   {m}"))
+        if result.get("error"):
+            print(f"✘ 查询失败:{result['error']}", file=sys.stderr)
+            return 3
+        print("─" * 68)
+        print(describe_order(result.get("last") or {}))
+        print("─" * 68)
+        if result["paid"]:
+            print("  ✅ 已支付,订单进入处理流程")
+        elif result["cancelled"]:
+            print("  ⛔ 订单已取消")
+        elif result["timedOut"]:
+            print(f"  ⏰ 等待 {args.timeout:g} 秒后仍未支付"
+                  f"(查询 {result['polls']} 次)。可稍后用 "
+                  f"order status --order-id {args.order_id} 再查")
+        else:
+            print(f"  当前状态:{result.get('orderStatus') or '未知'}")
+        if args.json_path:
+            with open(args.json_path, "w", encoding="utf-8") as handle:
+                json.dump(result, handle, ensure_ascii=False, indent=2, default=str)
+        return 0
 
     if action == "list":
         session = Session(config)

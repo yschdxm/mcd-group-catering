@@ -2,7 +2,7 @@
 
 [![Python](https://img.shields.io/badge/python-3.9%2B-blue)](https://www.python.org/)
 [![Dependencies](https://img.shields.io/badge/dependencies-none-brightgreen)](pyproject.toml)
-[![Tests](https://img.shields.io/badge/tests-129%20passed-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/tests-148%20passed-brightgreen)](tests/)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Agent Skill](https://img.shields.io/badge/Agent%20Skill-SKILL.md-ffc72c)](SKILL.md)
 [![MCP](https://img.shields.io/badge/MCP-mcd.mcd.cn-ffc72c)](MCP_INTEGRATION.md)
@@ -395,7 +395,9 @@ python -m mcdteam leaderboard            # 抓官方排行榜,看赛道拥挤度
 | `order preview` | **装配下单请求但不提交**(dry-run),打印会提交什么 |
 | `order pay` | **真实下单** —— 需 `--pay` + 环境变量 `MCD_ALLOW_REAL_ORDER=1` 双闸门 |
 | `order status` / `order list` | 查询订单状态 / 历史订单(只读) |
-| `order cancel` | 取消订单(有副作用,需确认) |
+| `order cancel` | 取消单笔订单(有副作用,需确认) |
+| `order cleanup` | **列出并清理被遗忘的未支付订单**,默认只列出(dry-run) |
+| `order wait` | 轮询到「已支付/终态」,用于支付后自动确认(只读) |
 | `leaderboard` | 抓取官方排行榜(只读,用于评估赛道拥挤度) |
 
 另有一个独立脚本用于**把演示快照换成你自己门店的数据**(快照只含门店编码、
@@ -525,7 +527,7 @@ mcd-group-catering/
 │   └── cli.py                    命令行入口
 ├── tools/
 │   └── regen_fixtures.py         用你自己的门店重新生成离线快照
-├── tests/                        129 个单元测试
+├── tests/                        148 个单元测试
 └── examples/                     示例输出
 ```
 
@@ -539,7 +541,7 @@ python -m pytest -q
 
 ```text
 ...............................................................          [100%]
-129 passed
+148 passed
 ```
 
 覆盖范围:
@@ -550,7 +552,7 @@ python -m pytest -q
 | `test_menu.py` | 角色分类(含炸鸡/瓶装水/蘸酱/套餐等易错项)、份量推断、多编码合并、售罄标记 |
 | `test_solver.py` | 中文需求解析、配额推算、券与促销归一化、参数链规则、求解器预算/忌口/主食配额/可复现性、团餐 gmServiceCode、套餐营养拆解与名称不一致防护、取价失败报错、报告渲染 |
 | `test_skill_conformance.py` | Skill 形态合规:frontmatter 规范、触发词覆盖、参考文件存在性、脚本自举、必需文件齐全、声明的铁律与免责声明是否在册 |
-| `test_order.py` | 下单参数装配(场景参数链、takeWayCode/addressId/gmServiceCode)、三重安全闸门、金额闸门、**配送范围提前校验**、支付链接与支付卡片解析、订单状态渲染。全部使用假客户端,零网络副作用 |
+| `test_order.py` | 下单参数装配(场景参数链、takeWayCode/addressId/gmServiceCode)、安全闸门、金额闸门、**配送范围提前校验**、支付链接与支付卡片、订单状态渲染、**未支付订单清理**与**支付轮询**(含超时/取消/查询异常路径)。全部使用假客户端,零网络副作用 |
 | `test_agent_entrypoints.py` | 真的把脚本当子进程跑:stdout 是纯 JSON、失败返回结构化信封、`--json` 落盘可用 |
 
 关键断言示例:

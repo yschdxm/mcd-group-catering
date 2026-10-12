@@ -416,15 +416,131 @@ def describe_cancel_reasons() -> str:
     return "、".join(f"{code}={text}" for code, text in sorted(CANCEL_REASONS.items()))
 
 
-#: query-order 返回的 status 码(实测)
+#: ``query-order`` 返回的 ``status`` 码 → 文案(取自工具 outputSchema 的权威说明)
 ORDER_STATUS_CODES = {
-    "10": "待支付",
-    "20": "已支付/制作中",
-    "30": "待取餐",
-    "40": "已完成",
-    "50": "已取消",
-    "60": "订单已取消",
+    "1": "待支付",
+    "2": "配餐中-已支付",
+    "4": "配送中",
+    "6": "已完成",
+    "7": "已取消",
+    "8": "已评价",
+    "10": "配餐中-餐厅确认配餐中",
 }
+
+#: 中文状态文案 → 语义分组。``order-list`` 只回中文文案,没有 status 码,
+#: 所以判定必须走文案;这里同时兼容可能的措辞差异。
+_STATUS_GROUPS = {
+    "pending_payment": ("待支付", "未支付"),
+    "paid": ("已支付", "配餐中", "制作中", "配送中", "待取餐"),
+    "done": ("已完成", "已评价", "已取餐"),
+    "cancelled": ("已取消", "已撤单", "已关闭", "已过期"),
+}
+
+
+def status_group(order_status: str) -> str:
+    """把订单状态文案归到 ``pending_payment`` / ``paid`` / ``done`` / ``cancelled``。
+
+    无法识别时返回 ``""`` —— 调用方应把未知状态当作「不动它」处理,而不是猜。
+    """
+    text = str(order_status or "").strip()
+    if not text:
+        return ""
+    for group, keywords in _STATUS_GROUPS.items():
+        if any(keyword in text for keyword in keywords):
+            return group
+    return ""
+
+
+def is_pending_payment(order: Dict[str, Any]) -> bool:
+    """该订单是否处于「待支付」状态。
+
+    实测 ``order-list`` 会返回 ``orderStatus = "待支付"`` 的订单,所以可以用它
+    找出所有被遗忘的未支付订单。
+    """
+    if not isinstance(order, dict):
+        return False
+    return status_group(order.get("orderStatus")) == "pending_payment"
+
+
+def pending_payment_orders(client) -> List[Dict[str, Any]]:
+    """挑出全部未支付订单,按创建时间倒序。"""
+    orders = [o for o in client.order_list() if is_pending_payment(o)]
+    orders.sort(key=lambda o: str(o.get("createTime") or ""), reverse=True)
+    return orders
+
+
+def summarise_order(order: Dict[str, Any]) -> str:
+    """一行摘要,用于 ``order list`` 与 ``order cleanup`` 的表格。"""
+    products = order.get("orderProductList") or []
+    names = "、".join(
+        f"{p.get('productName', '')}×{p.get('quantity', 1)}" for p in products[:3]
+    )
+    if len(products) > 3:
+        names += f" 等 {len(products)} 项"
+    amount = order.get("realTotalAmount") or order.get("totalAmount") or ""
+    return (f"{order.get('orderStatus', ''):<10}"
+            f" ¥{amount:<8} {names}")
+
+
+# --------------------------------------------------------------- 支付后轮询
+DEFAULT_POLL_INTERVAL = 5.0
+DEFAULT_POLL_TIMEOUT = 180.0
+
+#: 轮询停止条件:进入这些状态就没必要继续等了
+TERMINAL_GROUPS = {"paid", "done", "cancelled"}
+
+
+def wait_for_payment(client, order_id: str, *, timeout: float = DEFAULT_POLL_TIMEOUT,
+                     interval: float = DEFAULT_POLL_INTERVAL,
+                     progress=None,
+                     sleep=None) -> Dict[str, Any]:
+    """轮询订单状态,直到「已支付」或状态进入终态。
+
+    为什么需要:``create-order`` 的描述里明确要求下单后引导用户
+    「支付完成后回复'支付完成'或'支付失败',会帮您查询最新的订单状态」。
+    人工来回问一次很费事,所以这里做一个有上限的轮询。
+
+    返回::
+
+        {"orderId":..., "orderStatus":..., "group":..., "polls": n,
+         "timedOut": bool, "paid": bool, "cancelled": bool, "last": {...}}
+
+    注意:轮询只调用只读的 ``query-order``,不会产生任何副作用。
+    超时后会返回 ``timedOut=True`` 并把最后一次状态带回去,
+    让调用方决定是继续等还是提示用户自己去查。
+    """
+    import time as _time
+
+    sleeper = sleep or _time.sleep
+    deadline = _time.monotonic() + max(0.0, float(timeout))
+    polls = 0
+    last: Dict[str, Any] = {}
+    timed_out = False
+
+    while True:
+        polls += 1
+        try:
+            last = client.query_order(order_id)
+        except MCPError as exc:
+            return {"orderId": order_id, "orderStatus": "", "group": "", "polls": polls,
+                    "timedOut": False, "paid": False, "cancelled": False,
+                    "error": exc.message, "last": last}
+        group = status_group(last.get("orderStatus"))
+        if progress:
+            progress(f"第 {polls} 次查询:{last.get('orderStatus', '未知')}")
+        if group in TERMINAL_GROUPS:
+            return {"orderId": order_id,
+                    "orderStatus": str(last.get("orderStatus") or ""),
+                    "group": group, "polls": polls, "timedOut": False,
+                    "paid": group in ("paid", "done"),
+                    "cancelled": group == "cancelled", "last": last}
+        if _time.monotonic() >= deadline:
+            timed_out = True
+            return {"orderId": order_id,
+                    "orderStatus": str(last.get("orderStatus") or ""),
+                    "group": group, "polls": polls, "timedOut": True,
+                    "paid": False, "cancelled": False, "last": last}
+        sleeper(interval)
 
 
 def validate_store_address(client, store_context: StoreContext) -> Dict[str, Any]:
@@ -545,6 +661,15 @@ def describe_order(data: Dict[str, Any]) -> str:
         lines.append("   ⏰ 尚未支付。逾期未支付订单会自动关闭,不会产生扣款。")
         lines.append("   ▶ 可执行:order cancel --order-id "
                      f"{data.get('orderId', '')} 撤销该订单")
-    if str(code) in ("50", "60") or "取消" in current:
+        lines.append("   ▶ 支付后可用:order wait --order-id "
+                     f"{data.get('orderId', '')} 自动确认状态")
+    group = status_group(current)
+    if group == "cancelled":
         lines.append("   ✔ 该订单已取消,不产生任何消费。")
+    elif group in ("paid", "done"):
+        lines.append("   ✔ 订单已支付,正在处理。")
+        if data.get("pickupCode"):
+            lines.append(f"   🔢 取餐码:{data['pickupCode']}")
+        if data.get("lockerCode"):
+            lines.append(f"   🔐 取餐柜:{data['lockerCode']}")
     return "\n".join(lines)
