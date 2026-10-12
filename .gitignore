@@ -5,6 +5,12 @@ __pycache__/
 .eggs/
 build/
 dist/
+# 但 dist/ 里的说明与封面上库,便于他人知道产物如何重建
+# (具体哪些大文件被排除,看 dist/.gitignore)
+!dist/
+!dist/README.md
+!dist/.gitignore
+!dist/*.png
 .venv/
 venv/
 env/

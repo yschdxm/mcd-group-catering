@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+  :root{
+    --red:#DA291C; --gold:#FFC72C; --ink:#0B0D12;
+    --txt:#F5F6F8; --dim:#9AA3B2;
+    --sans:"PingFang SC","Microsoft YaHei","Noto Sans SC",system-ui,sans-serif;
+    --mono:"Cascadia Mono",Consolas,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{width:1920px;height:1080px;overflow:hidden;background:var(--ink)}
+  body{font-family:var(--sans);color:var(--txt);-webkit-font-smoothing:antialiased;
+       position:relative}
+  .glow{position:absolute;border-radius:50%;filter:blur(110px)}
+  .g1{width:1200px;height:1200px;left:-220px;top:-320px;
+      background:radial-gradient(circle,rgba(218,41,28,.62),transparent 68%)}
+  .g2{width:1300px;height:1300px;right:-300px;bottom:-420px;
+      background:radial-gradient(circle,rgba(255,199,44,.38),transparent 68%)}
+  #grid{position:absolute;inset:0;opacity:.32;
+    background-image:linear-gradient(rgba(255,255,255,.10) 1px,transparent 1px),
+                     linear-gradient(90deg,rgba(255,255,255,.10) 1px,transparent 1px);
+    background-size:64px 64px}
+
+  .kicker{font-size:30px;letter-spacing:.34em;color:var(--gold);font-weight:600}
+  h1{font-size:126px;line-height:1.06;font-weight:800;letter-spacing:-.02em}
+  .accent{background:linear-gradient(96deg,var(--gold),#FF8A3D 55%,var(--red));
+          -webkit-background-clip:text;background-clip:text;color:transparent}
+  .sub{font-size:34px;color:var(--dim)}
+
+  .card{background:linear-gradient(160deg,rgba(255,255,255,.09),rgba(255,255,255,.03));
+        border:1px solid rgba(255,255,255,.14);border-radius:26px;
+        box-shadow:0 30px 80px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.07)}
+
+  .price{font-variant-numeric:tabular-nums;font-weight:800}
+  .tag{font-size:26px;padding:12px 28px;border-radius:999px;
+       background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18)}
+
+  .seal{position:absolute;right:150px;top:170px}
+</style>
+</head>
+<body>
+  <div class="glow g1"></div>
+  <div class="glow g2"></div>
+  <div id="grid"></div>
+
+  <!-- 封面左侧主信息 -->
+  <div style="position:absolute;left:150px;top:210px;width:1180px">
+    <div class="kicker">麦当劳 MCP · AGENT SKILL</div>
+
+    <h1 style="margin-top:40px">
+      一句话<br>
+      <span class="accent">排好一桌团餐</span>
+    </h1>
+
+    <div class="sub" style="margin-top:46px;font-size:38px">
+      14 个人 · 预算 480 · 有忌口 → 30 秒出采购清单
+    </div>
+
+    <!-- 三张关键数据卡,直接给出可信度 -->
+    <div style="display:flex;gap:26px;margin-top:64px">
+      <div class="card" style="padding:28px 34px;min-width:290px">
+        <div style="font-size:22px;color:var(--dim);letter-spacing:.14em">应付金额</div>
+        <div style="margin-top:10px">
+          <span style="font-size:30px;color:var(--dim)">¥</span>
+          <span class="price" style="font-size:64px;color:var(--gold)">475</span>
+        </div>
+        <div style="margin-top:6px;font-size:22px;color:#2ECC71">主食 14 份 · 未超预算</div>
+      </div>
+      <div class="card" style="padding:28px 34px;min-width:290px">
+        <div style="font-size:22px;color:var(--dim);letter-spacing:.14em">三家门店比价</div>
+        <div style="margin-top:10px">
+          <span style="font-size:30px;color:var(--dim)">省 ¥</span>
+          <span class="price" style="font-size:64px;color:#2ECC71">17</span>
+        </div>
+        <div style="margin-top:6px;font-size:22px;color:var(--dim)">最省 ¥285.50</div>
+      </div>
+      <div class="card" style="padding:28px 34px;min-width:290px">
+        <div style="font-size:22px;color:var(--dim);letter-spacing:.14em">测试 / 依赖</div>
+        <div style="margin-top:10px">
+          <span class="price" style="font-size:64px">176</span>
+          <span style="font-size:26px;color:var(--dim)"> 项测试</span>
+        </div>
+        <div style="margin-top:6px;font-size:22px;color:var(--dim)">零第三方依赖</div>
+      </div>
+    </div>
+
+    <!-- 关键词条 -->
+    <div style="display:flex;gap:18px;margin-top:40px">
+      <span class="tag">多门店比价</span>
+      <span class="tag">实价核验</span>
+      <span class="tag">忌口不漏</span>
+      <span class="tag">可离线复现</span>
+    </div>
+  </div>
+
+  <!-- 右上角印章 -->
+  <svg class="seal" width="330" height="330" viewBox="0 0 200 200">
+    <circle cx="100" cy="100" r="88" fill="none" stroke="rgba(255,199,44,.34)" stroke-width="2"/>
+    <circle cx="100" cy="100" r="68" fill="none" stroke="rgba(218,41,28,.42)" stroke-width="2"
+            stroke-dasharray="7 11"/>
+    <text x="100" y="100" text-anchor="middle" font-size="42" font-weight="800"
+          fill="#FFC72C" font-family="PingFang SC,Microsoft YaHei,sans-serif">麦麦</text>
+    <text x="100" y="136" text-anchor="middle" font-size="16" letter-spacing="4"
+          fill="#9AA3B2" font-family="PingFang SC,sans-serif">团餐统筹官</text>
+  </svg>
+
+  <!-- 底部：一句话 + 免责 -->
+  <div style="position:absolute;left:150px;bottom:74px;font-size:29px;color:var(--txt)">
+    麦当劳中国 MCP × 约束求解 · 开源项目
+    <span style="color:var(--dim)">（第三方作品，非麦当劳官方产品）</span>
+  </div>
+
+  <!-- 顶部一条品牌色进度线,与视频视觉一致 -->
+  <div style="position:absolute;left:0;top:0;width:100%;height:6px;
+       background:linear-gradient(90deg,var(--gold),var(--red),var(--gold))"></div>
+</body>
+</html>

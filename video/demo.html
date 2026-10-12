@@ -1,0 +1,706 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>麦麦团餐统筹官 · 演示</title>
+<style>
+  :root{
+    --red:#DA291C; --red-d:#A81B11; --gold:#FFC72C; --gold-d:#E0A800;
+    --ink:#0B0D12; --ink-2:#12161F; --line:rgba(255,255,255,.10);
+    --txt:#F5F6F8; --dim:#9AA3B2; --ok:#2ECC71; --cyan:#43D9E0;
+    --mono:"Cascadia Mono","JetBrains Mono",Consolas,"Courier New",monospace;
+    --sans:"PingFang SC","Microsoft YaHei","Noto Sans SC","Source Han Sans SC",system-ui,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{width:1920px;height:1080px;overflow:hidden;background:var(--ink)}
+  body{font-family:var(--sans);color:var(--txt);-webkit-font-smoothing:antialiased}
+
+  /* ── 世界:一条连续的场景带,由相机横向推移,而不是一页页切换 ── */
+  #world{position:absolute;inset:0;will-change:transform}
+  .band{position:absolute;top:0;height:1080px}
+
+  /* ── 背景:渐变光晕 + 细网格,随相机轻微视差 ── */
+  #bg{position:absolute;inset:-200px;z-index:0}
+  .glow{position:absolute;border-radius:50%;filter:blur(90px);opacity:.5}
+  .g1{width:1100px;height:1100px;left:-160px;top:-260px;
+      background:radial-gradient(circle,rgba(218,41,28,.55),transparent 68%)}
+  .g2{width:1200px;height:1200px;right:-240px;bottom:-380px;
+      background:radial-gradient(circle,rgba(255,199,44,.32),transparent 68%)}
+  #grid{position:absolute;inset:0;opacity:.35;
+    background-image:linear-gradient(var(--line) 1px,transparent 1px),
+                     linear-gradient(90deg,var(--line) 1px,transparent 1px);
+    background-size:64px 64px}
+
+  /* ── 顶部进度尺:贯穿全片的一条线,让"连贯"看得见 ── */
+  #rail{position:absolute;left:0;top:0;width:100%;height:4px;z-index:50;
+        background:rgba(255,255,255,.07)}
+  #railFill{height:100%;width:0;
+        background:linear-gradient(90deg,var(--gold),var(--red),var(--gold));
+        box-shadow:0 0 18px rgba(255,199,44,.75)}
+  #stamp{position:absolute;right:56px;top:40px;z-index:50;text-align:right;
+         font-size:17px;letter-spacing:.22em;color:var(--dim);opacity:0}
+
+  /* ── 通用文本 ── */
+  .kicker{font-size:22px;letter-spacing:.34em;color:var(--gold);font-weight:600}
+  h1{font-size:132px;line-height:1.02;font-weight:800;letter-spacing:-.02em}
+  h1 .accent{background:linear-gradient(96deg,var(--gold),#FF8A3D 55%,var(--red));
+        -webkit-background-clip:text;background-clip:text;color:transparent}
+  .sub{font-size:30px;color:var(--dim);line-height:1.6}
+
+  /* 逐字浮现:用 blur 到清晰,比单纯 opacity 更有"写出来"的感觉 */
+  .ch{display:inline-block;opacity:0;filter:blur(12px);transform:translateY(26px)}
+  .ch.space{width:.34em}
+
+  /* ── 卡片 ── */
+  .card{background:linear-gradient(160deg,rgba(255,255,255,.075),rgba(255,255,255,.025));
+        border:1px solid var(--line);border-radius:26px;
+        box-shadow:0 30px 80px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.06)}
+
+  /* ── 终端 ── */
+  .term{font-family:var(--mono);background:rgba(6,9,15,.92);
+        border:1px solid rgba(255,255,255,.14);border-radius:20px;overflow:hidden}
+  .tbar{display:flex;align-items:center;gap:10px;padding:16px 22px;
+        background:rgba(255,255,255,.05);border-bottom:1px solid var(--line)}
+  .dot{width:13px;height:13px;border-radius:50%}
+  .prompt{color:var(--cyan)}
+  .cursor{display:inline-block;width:13px;height:30px;background:var(--gold);
+          vertical-align:-6px;margin-left:5px}
+
+  /* ── 数字滚动与计量条 ── */
+  .num{font-variant-numeric:tabular-nums;font-weight:800}
+  .meter{height:12px;border-radius:8px;background:rgba(255,255,255,.10);overflow:hidden}
+  .meter > i{display:block;height:100%;border-radius:8px;
+             background:linear-gradient(90deg,var(--gold),var(--red))}
+  .ring{transform:rotate(-90deg)}
+  .ring circle{fill:none;stroke-linecap:round}
+
+  /* 比价行的重排:用绝对定位 + translateY,让"名次变化"真的动起来 */
+  .storeRow{position:absolute;left:0;right:0;height:104px;
+            display:flex;align-items:center;gap:26px;padding:0 34px;border-radius:20px;
+            background:linear-gradient(90deg,rgba(255,255,255,.07),rgba(255,255,255,.02));
+            border:1px solid var(--line)}
+  .storeRow.win{background:linear-gradient(90deg,rgba(255,199,44,.20),rgba(218,41,28,.10));
+                border-color:rgba(255,199,44,.55);
+                box-shadow:0 0 42px rgba(255,199,44,.22)}
+  .rank{font-size:34px;font-weight:800;width:56px;color:var(--dim)}
+  .storeRow.win .rank{color:var(--gold)}
+  .money{font-variant-numeric:tabular-nums;font-weight:800;font-size:38px}
+
+  /* 清单行:随进度连续堆叠 */
+  .billRow{display:flex;align-items:center;gap:20px;height:62px;
+           border-bottom:1px dashed rgba(255,255,255,.09)}
+  .billRow .nm{flex:1;font-size:27px}
+  .tag{font-size:18px;padding:5px 14px;border-radius:999px;
+       background:rgba(255,255,255,.09);color:var(--dim)}
+  .tag.main{background:rgba(218,41,28,.24);color:#FFB4AB}
+  .tag.side{background:rgba(67,217,224,.18);color:#9DEFF3}
+  .tag.drink{background:rgba(255,199,44,.20);color:#FFE08A}
+  .tag.dessert{background:rgba(46,204,113,.18);color:#A8F0C6}
+</style>
+</head>
+<body>
+<div id="rail"><div id="railFill"></div></div>
+<div id="stamp">MCD GROUP CATERING · DEMO</div>
+
+<div id="bg">
+  <div class="glow g1"></div>
+  <div class="glow g2"></div>
+  <div id="grid"></div>
+</div>
+
+<div id="world">
+
+  <!-- ═══════════ 场景带 1 · 开场(世界坐标 0 → 1920) ═══════════ -->
+  <section class="band" id="b1" style="left:0;width:1920px">
+    <div style="position:absolute;left:170px;top:300px">
+      <div class="kicker" id="k1">麦当劳 MCP · AGENT SKILL</div>
+      <h1 style="margin-top:30px">
+        <span id="title1"></span><br><span class="accent" id="title2"></span>
+      </h1>
+      <div class="sub" style="margin-top:44px;max-width:1060px" id="k2">
+        一句话中文需求 → 一份可直接下单的团餐采购清单
+      </div>
+    </div>
+    <!-- 开场的一个"落章"元素:金色圆环持续旋转,作为全片的视觉锚点 -->
+    <svg id="seal" width="420" height="420" viewBox="0 0 200 200"
+         style="position:absolute;right:190px;top:300px">
+      <circle cx="100" cy="100" r="86" fill="none" stroke="rgba(255,199,44,.30)" stroke-width="1.5"/>
+      <circle cx="100" cy="100" r="66" fill="none" stroke="rgba(218,41,28,.35)" stroke-width="1.5"
+              stroke-dasharray="6 10"/>
+      <text x="100" y="108" text-anchor="middle" font-size="40" font-weight="800"
+            fill="#FFC72C" font-family="PingFang SC,Microsoft YaHei,sans-serif">麦麦</text>
+      <text x="100" y="140" text-anchor="middle" font-size="15" letter-spacing="3"
+            fill="#9AA3B2" font-family="PingFang SC,sans-serif">团餐统筹官</text>
+    </svg>
+  </section>
+
+  <!-- ═══════════ 场景带 2 · 痛点(1920 → 3840) ═══════════ -->
+  <section class="band" id="b2" style="left:1920px;width:1920px">
+    <div style="position:absolute;left:170px;top:210px">
+      <div class="kicker">行政/HR 每周的真实困境</div>
+      <h1 style="margin-top:26px;font-size:104px" id="p-title"></h1>
+    </div>
+    <!-- 四个痛点卡片,依次"推入",并带轻微持续浮动 -->
+    <div id="pains" style="position:absolute;left:170px;top:520px;width:1580px;
+         display:grid;grid-template-columns:repeat(4,1fr);gap:30px"></div>
+    <!-- 计时器:从 40 分钟连续倒数,把"耗时"这件事变成可见的运动 -->
+    <div class="card" style="position:absolute;left:170px;top:800px;width:760px;
+         padding:34px 40px;display:flex;align-items:center;gap:34px">
+      <svg width="120" height="120" class="ring" viewBox="0 0 120 120">
+        <circle cx="60" cy="60" r="52" stroke="rgba(255,255,255,.10)" stroke-width="10"/>
+        <circle id="clockRing" cx="60" cy="60" r="52" stroke="#DA291C" stroke-width="10"
+                stroke-dasharray="327" stroke-dashoffset="327"/>
+      </svg>
+      <div>
+        <div style="font-size:20px;color:var(--dim);letter-spacing:.14em">人工比价耗时</div>
+        <div style="margin-top:6px"><span class="num" id="clockNum"
+             style="font-size:62px;color:#FF8A3D">40</span>
+          <span style="font-size:26px;color:var(--dim)"> 分钟 / 次</span></div>
+      </div>
+    </div>
+    <div class="card" style="position:absolute;left:980px;top:800px;width:770px;
+         padding:34px 40px">
+      <div style="font-size:20px;color:var(--dim);letter-spacing:.14em">并且经常翻车</div>
+      <div style="margin-top:16px;font-size:30px;line-height:1.55">
+        小食买一堆、主食不够分 · 漏掉某人的忌口 · 券忘了用 · 超预算
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ 场景带 3 · 一句话输入(3840 → 5760) ═══════════ -->
+  <section class="band" id="b3" style="left:3840px;width:1920px">
+    <div style="position:absolute;left:170px;top:200px">
+      <div class="kicker">只需要说一句话</div>
+    </div>
+    <div class="term" style="position:absolute;left:170px;top:330px;width:1580px">
+      <div class="tbar">
+        <span class="dot" style="background:#FF5F57"></span>
+        <span class="dot" style="background:#FEBC2E"></span>
+        <span class="dot" style="background:#28C840"></span>
+        <span style="margin-left:14px;color:var(--dim);font-size:18px">
+          dsh — 麦麦团餐统筹官</span>
+      </div>
+      <div style="padding:46px 46px 54px;font-size:40px;line-height:1.65">
+        <div><span class="prompt">❯</span> <span id="typed"></span><span class="cursor"
+             id="caret"></span></div>
+        <div id="parseOut" style="margin-top:34px;font-size:25px;color:var(--dim);
+             line-height:1.9"></div>
+      </div>
+    </div>
+    <!-- 解析出的约束芯片,从输入框"飞"到右侧,形成连续位移 -->
+    <div id="chips" style="position:absolute;left:1780px;top:360px;width:0"></div>
+  </section>
+
+  <!-- ═══════════ 场景带 4 · 方案生成(5760 → 7680) ═══════════ -->
+  <section class="band" id="b4" style="left:5760px;width:1920px">
+    <div style="position:absolute;left:170px;top:150px">
+      <div class="kicker">方案生成 · 主食每人一份,预算不超</div>
+    </div>
+    <div class="card" style="position:absolute;left:170px;top:250px;width:1010px;
+         height:700px;padding:34px 40px">
+      <div style="font-size:21px;color:var(--dim);letter-spacing:.12em">采购清单</div>
+      <div id="bill" style="margin-top:14px"></div>
+    </div>
+    <div class="card" style="position:absolute;left:1230px;top:250px;width:520px;
+         height:330px;padding:34px 40px">
+      <div style="font-size:21px;color:var(--dim);letter-spacing:.12em">应付金额</div>
+      <div style="margin-top:10px">
+        <span style="font-size:34px;color:var(--dim)">¥</span>
+        <span class="num" id="payNum" style="font-size:88px;color:var(--gold)">0</span>
+      </div>
+      <div style="margin-top:8px;font-size:24px;color:var(--dim)">
+        人均 <span id="perNum" style="color:var(--txt)">¥0</span>
+        · 预算利用率 <span id="useNum" style="color:var(--ok)">0%</span>
+      </div>
+      <div class="meter" style="margin-top:26px"><i id="payMeter" style="width:0"></i></div>
+    </div>
+    <div class="card" style="position:absolute;left:1230px;top:620px;width:520px;
+         height:330px;padding:30px 34px">
+      <div style="font-size:21px;color:var(--dim);letter-spacing:.12em">人均营养</div>
+      <div style="display:flex;gap:26px;margin-top:18px;align-items:center">
+        <svg width="150" height="150" class="ring" viewBox="0 0 150 150">
+          <circle cx="75" cy="75" r="64" stroke="rgba(255,255,255,.09)" stroke-width="13"/>
+          <circle id="kcalRing" cx="75" cy="75" r="64" stroke="#FFC72C" stroke-width="13"
+                  stroke-dasharray="402" stroke-dashoffset="402"/>
+        </svg>
+        <div>
+          <div><span class="num" id="kcalNum" style="font-size:52px">0</span>
+            <span style="font-size:22px;color:var(--dim)"> kcal</span></div>
+          <div style="margin-top:12px;font-size:24px;color:var(--dim)">
+            蛋白质 <span id="proNum" style="color:var(--txt)">0</span> g</div>
+          <div style="margin-top:10px;font-size:22px;color:var(--dim)" id="splitLine"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ 场景带 5 · 多门店比价(7680 → 9600) ═══════════ -->
+  <section class="band" id="b5" style="left:7680px;width:1920px">
+    <div style="position:absolute;left:170px;top:170px">
+      <div class="kicker">同一地址,三家门店,价格不一样</div>
+    </div>
+    <div id="stores" style="position:absolute;left:170px;top:300px;width:1580px;height:420px"></div>
+    <div class="card" style="position:absolute;left:170px;top:760px;width:1580px;
+         padding:34px 44px;display:flex;align-items:center;justify-content:space-between">
+      <div>
+        <div style="font-size:20px;color:var(--dim);letter-spacing:.14em">最省的一家</div>
+        <div style="margin-top:8px;font-size:38px" id="bestName">—</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:20px;color:var(--dim);letter-spacing:.14em">比最贵省</div>
+        <div style="margin-top:4px">
+          <span style="font-size:36px;color:var(--dim)">¥</span>
+          <span class="num" id="saveNum" style="font-size:76px;color:var(--ok)">0</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ 场景带 6 · 下单与交付物(9600 → 11520) ═══════════ -->
+  <section class="band" id="b6" style="left:9600px;width:1920px">
+    <div style="position:absolute;left:170px;top:150px">
+      <div class="kicker">确认真实金额后下单,拿到支付链接</div>
+    </div>
+    <div class="term" style="position:absolute;left:170px;top:270px;width:980px">
+      <div class="tbar"><span class="dot" style="background:#28C840"></span>
+        <span style="margin-left:12px;color:var(--dim);font-size:18px">
+          create-order · 内部已完成四项校验</span></div>
+      <div style="padding:34px 38px;font-size:24px;line-height:2.05" id="orderOut"></div>
+    </div>
+    <div class="card" style="position:absolute;left:1210px;top:270px;width:540px;
+         height:300px;padding:32px 36px">
+      <div style="font-size:21px;color:var(--dim);letter-spacing:.12em">订单状态</div>
+      <div style="margin-top:16px;font-size:40px;color:var(--gold)" id="stText">待支付</div>
+      <div style="margin-top:18px;font-size:23px;color:var(--dim);line-height:1.7" id="stSub"></div>
+    </div>
+    <div class="card" style="position:absolute;left:1210px;top:600px;width:540px;
+         height:350px;padding:32px 36px">
+      <div style="font-size:21px;color:var(--dim);letter-spacing:.12em">可转发到群里</div>
+      <div style="margin-top:16px;font-size:25px;line-height:1.85" id="cardText"></div>
+    </div>
+  </section>
+
+  <!-- ═══════════ 场景带 7 · 收尾(11520 → 13440) ═══════════ -->
+  <section class="band" id="b7" style="left:11520px;width:1920px">
+    <div style="position:absolute;left:0;top:0;width:1920px;height:1080px;
+         display:flex;flex-direction:column;align-items:center;justify-content:center;
+         text-align:center">
+      <div class="kicker" id="e-kicker">第三方作品 · 非麦当劳官方产品</div>
+      <h1 style="margin-top:34px;font-size:118px" id="e-title"></h1>
+      <div class="sub" style="margin-top:40px;font-size:28px;max-width:1180px" id="e-sub"></div>
+      <div style="margin-top:56px;display:flex;gap:26px" id="e-badges"></div>
+    </div>
+    <svg id="seal2" width="200" height="200" viewBox="0 0 200 200"
+         style="position:absolute;right:130px;bottom:110px;opacity:.85">
+      <circle cx="100" cy="100" r="86" fill="none" stroke="rgba(255,199,44,.28)" stroke-width="1.5"/>
+      <circle cx="100" cy="100" r="66" fill="none" stroke="rgba(218,41,28,.32)" stroke-width="1.5"
+              stroke-dasharray="6 10"/>
+      <text x="100" y="108" text-anchor="middle" font-size="40" font-weight="800"
+            fill="#FFC72C" font-family="PingFang SC,Microsoft YaHei,sans-serif">麦麦</text>
+    </svg>
+  </section>
+
+</div>
+
+<script>
+/* ══════════════════════════════════════════════════════════════════════
+   全部动效都是时间的纯函数。window.__draw(t) 由外部(Playwright)逐帧调用,
+   因此同一 t 必得同一帧 —— 渲染可复现、可只重渲染某一段。
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* 时长由渲染器注入:占位符后面不能跟数值,否则替换后会变成 "74.0 74.0" */
+const DUR = /*DURATION*/0;
+const BAND_W = 1920;
+
+/* ── 小工具 ── */
+const clamp01 = v => v < 0 ? 0 : v > 1 ? 1 : v;
+// 归一化到 [a,b]
+const seg = (t, a, b) => clamp01((t - a) / Math.max(1e-6, b - a));
+const ease = {
+  outCubic: p => 1 - Math.pow(1 - p, 3),
+  inOutCubic: p => p < .5 ? 4*p*p*p : 1 - Math.pow(-2*p+2, 3)/2,
+  outQuint: p => 1 - Math.pow(1 - p, 5),
+  outBack: p => { const c1=1.70158, c3=c1+1; return 1 + c3*Math.pow(p-1,3) + c1*Math.pow(p-1,2); },
+  inOutSine: p => -(Math.cos(Math.PI*p) - 1)/2,
+};
+// 出现 → 保持 → 淡出(用于文字与卡片的连续进出)
+function appear(t, inA, inB, outA, outB){
+  const a = ease.outCubic(seg(t, inA, inB));
+  const o = outA === undefined ? 0 : ease.inOutSine(seg(t, outA, outB));
+  return a * (1 - o);
+}
+// 数字滚动
+const lerp = (a, b, p) => a + (b - a) * p;
+
+/* ── 逐字浮现 ── */
+function setChars(el, text, t, t0, span, order){
+  if (!el.dataset.built){
+    el.dataset.built = '1';
+    el.innerHTML = '';
+    el.__chars = [];
+    for (const ch of text){
+      if (ch === ' '){ const s=document.createElement('span'); s.className='ch space'; el.appendChild(s); continue; }
+      const s = document.createElement('span');
+      s.className = 'ch'; s.textContent = ch; el.appendChild(s); el.__chars.push(s);
+    }
+  }
+  const chars = el.__chars, n = chars.length || 1;
+  chars.forEach((s, i) => {
+    const idx = order === 'rev' ? (n - 1 - i) : i;
+    const p = ease.outCubic(seg(t, t0 + idx * span / n, t0 + idx * span / n + 0.42));
+    s.style.opacity = p;
+    s.style.filter = `blur(${(1 - p) * 12}px)`;
+    s.style.transform = `translateY(${(1 - p) * 26}px)`;
+  });
+}
+
+/* ══════════════ 静态内容(数据均来自项目真机跑出的结果) ══════════════ */
+const PAINS = [
+  ['配比失衡', '小食买一堆\n主食不够分'],
+  ['忌口遗漏', '有人不吃辣\n有人素食'],
+  ['优惠浪费', '券在卡包里\n结账才想起'],
+  ['预算失控', '心算人均\n结账就超'],
+];
+
+const BILL = [
+  ['板烧鸡腿堡',      'main',    23.50, 4],
+  ['牛肉堡单品精选',  'main',    14.00, 5],
+  ['麦香鸡',          'main',    17.00, 3],
+  ['双层吉士汉堡',    'main',    23.00, 2],
+  ['薄皮焦香V翅',     'side',    16.00, 4],
+  ['小杯玉米杯',      'side',    13.00, 1],
+  ['无糖可口可乐中杯','drink',   11.00, 6],
+  ['苹果片一袋(60g)', 'side',     7.00, 4],
+  ['圆筒冰淇淋',      'dessert',  5.00, 1],
+];
+const BILL_TOTAL = 472.00, BILL_PER = 33.71;
+
+const STORES = [
+  { name:'麦当劳无锡永乐路餐厅',   code:'1990041', price:285.50 },  // 最省
+  { name:'麦当劳无锡云蝠大厦餐厅', code:'1990684', price:293.00 },
+  { name:'麦当劳无锡五爱路餐厅',   code:'1990572', price:295.00 },  // 最贵
+];
+/* 让"名次重排"真的发生:初始按门店编码顺序摆放(五爱路在前),
+   随后连续滑动到按金额升序的正确名次。startRank[i] = i 在初始列表里的位置。 */
+const START_ORDER = [2, 1, 0];   // 初始纵向顺序:五爱路(295) / 云蝠(293) / 永乐路(285)
+const STORE_ROW_H = 128;
+
+const CHIPS = [
+  '14 人', '预算 ¥480', '不吃辣', '2 位素食', '1 位不吃牛肉',
+  '低卡优先', '要能分着吃', '12:00 前送达',
+];
+
+const ORDER_LOG = [
+  ['下单前重新核价',      '¥475.00 与方案一致'],
+  ['门店与地址匹配校验',  '通过'],
+  ['取餐方式码',          'eat-in(堂食)'],
+  ['有效期与营业状态',    '营业中'],
+];
+
+/* 时间轴:全部用绝对秒数描述。每组区间都落在对应场景的相机停留窗口内,
+   转场缝隙里不放关键内容 —— 否则会在镜头移动时被切掉。 */
+const T = {
+  title:    [0.4, 3.2],
+  seal:     [1.0, 2.8],
+  subIn:    [4.4, 6.4],
+  titleOut: [9.6, 11.0],
+  // 场景 2 · 痛点(11.8 → 20.0)
+  pIn:      [11.8, 13.0],
+  pCards:   [12.8, 16.8],
+  pClock:   [14.2, 17.6],
+  // 场景 3 · 一句话输入(21.0 → 29.0)
+  termIn:   [21.0, 22.2],
+  type:     [22.0, 26.6],
+  chips:    [26.8, 29.4],
+  // 场景 4 · 方案生成(29.8 → 41.0)
+  billIn:   [29.8, 31.0],
+  billRows: [30.8, 36.0],
+  pay:      [35.6, 38.2],
+  ring:     [37.8, 40.2],
+  split:    [39.8, 41.2],
+  // 场景 5 · 多门店比价(41.2 → 54.0)
+  storesIn: [41.2, 42.6],
+  storesMv: [43.6, 46.6],
+  saveIn:   [46.0, 47.8],
+  // 场景 6 · 下单(54.4 → 65.0)
+  orderIn:  [54.6, 55.8],
+  orderLog: [55.6, 61.2],
+  statusIn: [60.6, 62.0],
+  cardIn:   [61.8, 63.6],
+  // 场景 7 · 收尾(65.4 → 结束)
+  endIn:    [66.0, 68.0],
+  badges:   [67.6, 70.4],
+};
+
+/* 每个场景的世界坐标起点(7 屏) */
+const SCENE_X = [0, 1920, 3840, 5760, 7680, 9600, 11520];
+
+/* ── 相机轨迹 ──
+   不是匀速平移(那会让画面长时间停在两屏之间、左右都被切掉),
+   而是「停留 → 快速平滑转场 → 停留」。这样既保持镜头始终在运动,
+   又保证每个场景的主体都被完整取景。                      */
+const CAM_HOLD = [
+  [0.0, 11.0],    // 开场
+  [11.4, 20.6],   // 痛点
+  [21.0, 29.4],   // 一句话输入
+  [29.8, 40.8],   // 方案生成
+  [41.2, 54.0],   // 多门店比价
+  [54.4, 65.2],   // 下单
+  [65.6, DUR],    // 收尾
+];
+
+function camera(t){
+  let idx = 0;
+  for (let i = 0; i < CAM_HOLD.length; i++){
+    if (t >= CAM_HOLD[i][0]) idx = i;
+  }
+  // 默认停在本场景;若处于两场景之间的缝隙,则做一次缓动转场
+  let scene = idx;
+  if (idx < CAM_HOLD.length - 1 && t > CAM_HOLD[idx][1]){
+    const p = ease.inOutCubic(clamp01(
+      (t - CAM_HOLD[idx][1]) / (CAM_HOLD[idx + 1][0] - CAM_HOLD[idx][1])));
+    return { x: -lerp(SCENE_X[idx], SCENE_X[idx + 1], p), scene: p < 0.5 ? idx : idx + 1 };
+  }
+  // 停留期间加一点极缓慢的推近感,避免画面完全静止
+  const hold = CAM_HOLD[idx];
+  const stay = clamp01((t - hold[0]) / Math.max(0.01, hold[1] - hold[0]));
+  return { x: -SCENE_X[scene] - stay * 26, scene };
+}
+
+/* ══════════════ 渲染入口 ══════════════ */
+window.__draw = function(t){
+  /* 顶部进度尺与角标 */
+  document.getElementById('railFill').style.width = (clamp01(t / DUR) * 100) + '%';
+  document.getElementById('stamp').style.opacity = appear(t, 0.8, 1.8) * 0.9;
+
+  /* 相机 + 背景视差(视差让位移有纵深) */
+  const cam = camera(t);
+  document.getElementById('world').style.transform = `translateX(${cam.x}px)`;
+  document.getElementById('bg').style.transform =
+      `translateX(${cam.x * -0.055}px) translateY(${Math.sin(t * 0.28) * 14}px)`;
+  document.getElementById('grid').style.transform =
+      `translate(${(cam.x * -0.02) % 64}px, ${(t * 9) % 64}px)`;
+
+  /* ── 场景 1 ── */
+  setChars(document.getElementById('title1'), '麦麦团餐统筹官', t, T.title[0], 1.5);
+  setChars(document.getElementById('title2'), '一句话,排好一桌', t, T.title[0] + 0.5, 1.4);
+  const k1 = document.getElementById('k1');
+  k1.style.opacity = appear(t, 0.2, 1.0);
+  k1.style.transform = `translateX(${(1 - ease.outCubic(seg(t,0.2,1.0))) * -40}px)`;
+  const k2 = document.getElementById('k2');
+  k2.style.opacity = appear(t, T.subIn[0], T.subIn[1], T.titleOut[0], T.titleOut[1]);
+  k2.style.transform = `translateY(${(1 - ease.outCubic(seg(t, T.subIn[0], T.subIn[1]))) * 22}px)`;
+  const sealP = ease.outBack(seg(t, T.seal[0], T.seal[1]));
+  document.getElementById('seal').style.opacity = sealP * (1 - ease.inOutSine(seg(t, 9.8, 10.8)));
+  // 只做轻微摆动,不让文字整体旋转(旋转会让印章文字难以阅读)
+  document.getElementById('seal').style.transform =
+      `scale(${0.72 + sealP * 0.28}) rotate(${Math.sin(t * 0.7) * 4}deg)`;
+  // 标题在离场时淡出,与转场同步
+  const titleFade = 1 - ease.inOutSine(seg(t, T.titleOut[0], T.titleOut[1]));
+  document.querySelector('#b1 h1').style.opacity = titleFade;
+
+  /* ── 场景 2:痛点 ── */
+  const pt = document.getElementById('p-title');
+  setChars(pt, '订个团餐,要花 40 分钟', t, T.pIn[0], 1.2);
+  if (!document.getElementById('pains').dataset.built){
+    const box = document.getElementById('pains');
+    PAINS.forEach(([title, body], i) => {
+      const d = document.createElement('div');
+      d.className = 'card'; d.style.padding = '30px 28px'; d.style.height = '230px';
+      d.innerHTML = `<div style="font-size:19px;letter-spacing:.16em;color:#FFC72C">0${i+1}</div>
+        <div style="margin-top:14px;font-size:32px;font-weight:700">${title}</div>
+        <div style="margin-top:18px;font-size:23px;color:#9AA3B2;line-height:1.6;white-space:pre-line">${body}</div>`;
+      box.appendChild(d); d.__i = i;
+    });
+    box.dataset.built = '1';
+  }
+  [...document.getElementById('pains').children].forEach((d, i) => {
+    const a = ease.outBack(seg(t, T.pCards[0] + i * 0.55, T.pCards[0] + i * 0.55 + 0.9));
+    const fade = 1 - 0.5 * ease.inOutSine(seg(t, 19.4, 20.6));
+    d.style.opacity = a * fade;
+    d.style.transform = `translateY(${(1 - a) * 64 + Math.sin(t * 1.15 + i) * 6}px) scale(${0.94 + a * 0.06})`;
+  });
+  // 计时器:40 → 12 分钟连续倒数
+  const ck = ease.inOutCubic(seg(t, T.pClock[0], T.pClock[1]));
+  document.getElementById('clockNum').textContent = (40 - ck * 28).toFixed(1);
+  document.getElementById('clockRing').setAttribute('stroke-dashoffset', String(327 * (1 - ck)));
+  document.getElementById('clockRing').setAttribute('stroke', ck > 0.6 ? '#2ECC71' : '#DA291C');
+
+  /* ── 场景 3:一句话输入 ── */
+  const term = document.querySelector('#b3 .term');
+  const tin = ease.outQuint(seg(t, T.termIn[0], T.termIn[1]));
+  term.style.opacity = tin * (1 - 0.6 * ease.inOutSine(seg(t, 28.4, 29.6)));
+  term.style.transform = `translateY(${(1 - tin) * 46}px)`;
+  const QUESTION = '周五中午14个人,预算480,不吃辣,有两位素食,要低卡,12点前送到';
+  const tp = seg(t, T.type[0], T.type[1]);
+  const shown = Math.floor(QUESTION.length * ease.inOutSine(tp));
+  document.getElementById('typed').textContent = QUESTION.slice(0, shown);
+  document.getElementById('caret').style.opacity = (Math.floor(t * 2.4) % 2) ? 0 : 1;
+
+  const parseLines = [
+    '✓ 人数 = 14         ✓ 总预算 = 480 元',
+    '✓ 硬性忌口:不吃辣、素食    ✓ 软性偏好:低卡优先',
+    '✓ 送达时间 = 12:00    ✓ 主食配额 = 14 份',
+  ];
+  const po = document.getElementById('parseOut');
+  po.innerHTML = parseLines.map((line, i) => {
+    const a = ease.outCubic(seg(t, T.type[1] + 0.15 + i * 0.5, T.type[1] + 0.75 + i * 0.5));
+    return `<div style="opacity:${a};transform:translateX(${(1-a)*24}px)">${line}</div>`;
+  }).join('');
+
+  if (!document.getElementById('chips').dataset.built){
+    const box = document.getElementById('chips');
+    CHIPS.forEach((text, i) => {
+      const s = document.createElement('div');
+      s.textContent = text;
+      s.style.cssText = `position:absolute;left:0;top:${i * 62}px;white-space:nowrap;
+        font-size:24px;padding:12px 26px;border-radius:999px;
+        background:linear-gradient(120deg,rgba(255,199,44,.20),rgba(218,41,28,.16));
+        border:1px solid rgba(255,199,44,.42);color:#FFE08A`;
+      box.appendChild(s); s.__i = i;
+    });
+    box.dataset.built = '1';
+  }
+  [...document.getElementById('chips').children].forEach((s, i) => {
+    const a = ease.outCubic(seg(t, T.chips[0] + i * 0.12, T.chips[0] + i * 0.12 + 0.7));
+    // 从输入框那一侧"飞"出来:横向位移 + 微旋转
+    s.style.opacity = a;
+    s.style.transform = `translate(${-260 + a * 320}px, ${Math.sin(t * 1.3 + i) * 4}px) rotate(${(1-a) * -6}deg)`;
+  });
+
+  /* ── 场景 4:采购清单 ── */
+  const b4 = document.querySelector('#b4 .card');
+  const bin = ease.outQuint(seg(t, T.billIn[0], T.billIn[1]));
+  b4.style.opacity = bin; b4.style.transform = `translateY(${(1-bin)*40}px)`;
+  if (!document.getElementById('bill').dataset.built){
+    const box = document.getElementById('bill');
+    BILL.forEach(([name, kind, price, qty]) => {
+      const label = {main:'主食', side:'小食', drink:'饮料', dessert:'甜品'}[kind];
+      const d = document.createElement('div');
+      d.className = 'billRow';
+      d.innerHTML = `<span class="nm">${name}</span>
+        <span class="tag ${kind}">${label}</span>
+        <span style="width:110px;text-align:right;font-size:26px;color:#9AA3B2">¥${price.toFixed(2)}</span>
+        <span style="width:80px;text-align:right;font-size:27px">×${qty}</span>`;
+      box.appendChild(d);
+    });
+    box.dataset.built = '1';
+  }
+  [...document.getElementById('bill').children].forEach((row, i) => {
+    const a = ease.outCubic(seg(t, T.billRows[0] + i * 0.34, T.billRows[0] + i * 0.34 + 0.6));
+    row.style.opacity = a;
+    row.style.transform = `translateX(${(1 - a) * 60}px)`;
+  });
+  // 金额连续滚动
+  const payP = ease.outQuint(seg(t, T.pay[0], T.pay[1]));
+  document.getElementById('payNum').textContent = (BILL_TOTAL * payP).toFixed(2);
+  document.getElementById('perNum').textContent = '¥' + (BILL_PER * payP).toFixed(2);
+  document.getElementById('useNum').textContent = (98.3 * payP).toFixed(1) + '%';
+  document.getElementById('payMeter').style.width = (98.3 * payP).toFixed(1) + '%';
+  // 营养环
+  const rp = ease.inOutCubic(seg(t, T.ring[0], T.ring[1]));
+  const KCAL = 306, PRO = 16;
+  document.getElementById('kcalNum').textContent = Math.round(KCAL * rp);
+  document.getElementById('proNum').textContent = (PRO * rp).toFixed(1);
+  document.getElementById('kcalRing').setAttribute('stroke-dashoffset', String(402 * (1 - rp)));
+  const sp = ease.outCubic(seg(t, T.split[0], T.split[1]));
+  document.getElementById('splitLine').innerHTML =
+    `主食 1 份/人 · 饮料 每 1.3 人 1 份<br>小食 每 3.5 人 1 份`.replace(
+      /^/, `<span style="opacity:${sp}">`) + `</span>`;
+
+  /* ── 场景 5:多门店比价 ── */
+  if (!document.getElementById('stores').dataset.built){
+    const box = document.getElementById('stores');
+    STORES.forEach((st, i) => {
+      const d = document.createElement('div');
+      d.className = 'storeRow';
+      d.innerHTML = `<span class="rank">—</span>
+        <span style="flex:1;font-size:30px">${st.name}</span>
+        <span style="font-size:22px;color:#9AA3B2">${st.code}</span>
+        <span class="money" style="width:190px;text-align:right">¥${st.price.toFixed(2)}</span>`;
+      // 初始纵向位置必须来自 START_ORDER,否则三行会叠在同一处
+      d.style.transform = `translateY(${START_ORDER.indexOf(i) * STORE_ROW_H}px)`;
+      box.appendChild(d);
+    });
+    box.dataset.built = '1';
+  }
+  const rows = [...document.getElementById('stores').children];
+  const sin = ease.outQuint(seg(t, T.storesIn[0], T.storesIn[1]));
+  const mv  = ease.inOutCubic(seg(t, T.storesMv[0], T.storesMv[1]));
+  // 名次:金额升序 → STORES 本身已按金额排好,所以索引 i 就是最终名次
+  rows.forEach((row, i) => {
+    const r0 = START_ORDER.indexOf(i);      // 起始位次
+    const r1 = i;                            // 最终位次(金额升序)
+    const y = lerp(r0, r1, mv) * STORE_ROW_H;
+    const win = r1 === 0 && mv > 0.65;
+    row.classList.toggle('win', win);
+    row.style.opacity = sin;
+    row.style.transform = `translateY(${y}px) scale(${win ? 1 + 0.012 * (mv - .65) : 1})`;
+    // 名次随滑动在 1..3 之间连续变化,到位后落在真实名次上,避免三行显示同一个号
+    const rankFrom = 3 - START_ORDER.indexOf(i);
+    const rankTo = i + 1;
+    row.querySelector('.rank').textContent = '#' + Math.round(lerp(rankFrom, rankTo, mv));
+  });
+  const svp = ease.outQuint(seg(t, T.saveIn[0], T.saveIn[1]));
+  document.getElementById('bestName').textContent = '麦当劳无锡永乐路餐厅 · 1990041';
+  document.getElementById('saveNum').textContent = (17.00 * svp).toFixed(2);
+
+  /* ── 场景 6:下单 ── */
+  const oin = ease.outQuint(seg(t, T.orderIn[0], T.orderIn[1]));
+  const oterm = document.querySelector('#b6 .term');
+  oterm.style.opacity = oin; oterm.style.transform = `translateY(${(1-oin)*40}px)`;
+  const logBox = document.getElementById('orderOut');
+  logBox.innerHTML = ORDER_LOG.map(([k, v], i) => {
+    const a = ease.outCubic(seg(t, T.orderLog[0] + i * 0.7, T.orderLog[0] + i * 0.7 + 0.6));
+    return `<div style="opacity:${a};transform:translateX(${(1-a)*22}px)">
+      <span style="color:#2ECC71">✔</span> ${k}
+      <span style="color:#9AA3B2;float:right">${v}</span></div>`;
+  }).join('') + (() => {
+    const a = ease.outCubic(seg(t, T.orderLog[1] - 0.2, T.orderLog[1] + 0.4));
+    return `<div style="margin-top:18px;opacity:${a};font-size:21px;color:#FFC72C;
+      word-break:break-all">💳 https://m.mcd.cn/mcp/scanToPay?orderId=1030296…</div>`;
+  })();
+  const stin = ease.outCubic(seg(t, T.statusIn[0], T.statusIn[1]));
+  const stCard = document.querySelectorAll('#b6 .card')[0];
+  stCard.style.opacity = stin; stCard.style.transform = `translateY(${(1-stin)*30}px)`;
+  document.getElementById('stSub').innerHTML =
+    `支付截止 18:45:10<br>逾期自动关闭,不产生扣款`;
+  const cdin = ease.outCubic(seg(t, T.cardIn[0], T.cardIn[1]));
+  const cdCard = document.querySelectorAll('#b6 .card')[1];
+  cdCard.style.opacity = cdin; cdCard.style.transform = `translateY(${(1-cdin)*30}px)`;
+  document.getElementById('cardText').innerHTML =
+    `🍟 麦当劳团餐已下单<br>👥 到店自取 · ¥475.00<br>🧾 订单号 1030296…<br>💳 扫码支付`;
+
+  /* ── 场景 7:收尾 ── */
+  const e1 = appear(t, T.endIn[0], T.endIn[1]);
+  document.getElementById('e-kicker').style.opacity = e1;
+  setChars(document.getElementById('e-title'), '把团餐这件事交给它', t, T.endIn[0] + 0.2, 1.6);
+  const es = document.getElementById('e-sub');
+  es.style.opacity = appear(t, T.endIn[1], T.endIn[1] + 1.0);
+  es.innerHTML = `8 个命令 · 176 项测试 · 零第三方依赖 · 可完全离线复现`;
+  if (!document.getElementById('e-badges').dataset.built){
+    const box = document.getElementById('e-badges');
+    ['麦当劳 MCP 官方接口','约束求解','实价核验','多门店比价','Agent Skill']
+      .forEach(text => {
+        const s = document.createElement('div');
+        s.textContent = text;
+        s.style.cssText = `font-size:23px;padding:14px 30px;border-radius:999px;
+          background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.16)`;
+        box.appendChild(s);
+      });
+    box.dataset.built = '1';
+  }
+  [...document.getElementById('e-badges').children].forEach((b, i) => {
+    const a = ease.outBack(seg(t, T.badges[0] + i * 0.14, T.badges[0] + i * 0.14 + 0.6));
+    b.style.opacity = a;
+    b.style.transform = `translateY(${(1-a)*26}px)`;
+  });
+  document.getElementById('seal2').style.transform =
+      `scale(${ease.outBack(seg(t, T.endIn[0]+0.3, T.endIn[0]+1.4))}) rotate(${Math.sin(t * 0.6) * 3}deg)`;
+};
+
+/* 首帧渲染一次,避免 set_content 与 wait_for_timeout 期间出现空白帧 */
+window.__draw(0);
+</script>
+</body>
+</html>

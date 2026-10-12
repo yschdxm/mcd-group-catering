@@ -1,0 +1,6 @@
+# dist/ 里只保留说明与封面,视频等大文件可以随时重建
+*.mp4
+*.mov
+*.webm
+frames/
+preview/
