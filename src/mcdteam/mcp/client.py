@@ -272,16 +272,21 @@ class MCPClient:
     def _snapshot_candidates(self, tool: str, arguments: Dict[str, Any]) -> Iterable[str]:
         """按优先级列出可能的快照文件名。
 
-        * 门店级工具优先匹配带门店编码的文件;
-        * 价格与门店券还会额外尝试**带场景后缀**的文件
-          (``.<orderType>.<beType>.json``),因为同一门店的到店价与外送价不同,
-          只按门店编码命名会让两种场景互相覆盖。
+        命名规则(与 ``tools/regen_fixtures.py`` 一致):
+
+        * 门店级工具 ``<tool>.<storeCode>.json``;
+        * 地址级工具 ``<tool>.<addressId>.json``(如 ``delivery-query-stores``);
+        * 价格与门店券额外尝试**带场景后缀**的
+          ``<tool>.<storeCode>.<orderType>.<beType>.json`` ——
+          因为同一门店的到店价与外送价不同,只按门店编码命名会让两种场景互相覆盖;
+        * 最后回落到 ``<tool>.json``。
         """
         if not self.snapshot_dir:
             return []
         import os
 
         store = arguments.get("storeCode") or ""
+        address = arguments.get("addressId") or ""
         order_type = arguments.get("orderType")
         be_type = arguments.get("beType")
         names: List[str] = []
@@ -289,16 +294,12 @@ class MCPClient:
             names.append(f"{tool}.{store}.{order_type}.{be_type}.json")
         if store:
             names.append(f"{tool}.{store}.json")
+        if address:
+            names.append(f"{tool}.{address}.json")
         names.append(f"{tool}.json")
 
-        paths = []
-        for name in names:
-            if not name:
-                continue
-            path = os.path.join(self.snapshot_dir, name)
-            if os.path.exists(path):
-                paths.append(path)
-        return paths
+        return [os.path.join(self.snapshot_dir, name) for name in dict.fromkeys(names)
+                if os.path.exists(os.path.join(self.snapshot_dir, name))]
 
     def _read_snapshot(self, tool: str, arguments: Dict[str, Any]) -> Optional[ToolResult]:
         for path in self._snapshot_candidates(tool, arguments):

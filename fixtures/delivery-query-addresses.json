@@ -1,0 +1,21 @@
+{
+  "success": true,
+  "code": 200,
+  "message": "请求成功",
+  "data": {
+    "addresses": [
+      {
+        "addressId": "1036613970144243390849093445",
+        "contactName": "",
+        "phone": "",
+        "fullAddress": "江苏省无锡市梁溪区北禅寺巷15号(中山路八佰伴向…"
+      },
+      {
+        "addressId": "1036396390091519302126300997",
+        "contactName": "",
+        "phone": "",
+        "fullAddress": "山东省青岛市黄岛区光华大道与兴华大道交叉口正南方…"
+      }
+    ]
+  }
+}

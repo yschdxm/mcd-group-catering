@@ -193,6 +193,8 @@ def _build_parser() -> argparse.ArgumentParser:
     cmp_parser.add_argument("--max-stores", type=int, default=4,
                             help="最多比价几家门店,默认 4")
     cmp_parser.add_argument("--no-verify", action="store_true")
+    cmp_parser.add_argument("--offline", action="store_true",
+                            help="用仓库内置快照跑,不联网")
     cmp_parser.add_argument("--no-color", action="store_true")
     cmp_parser.add_argument("--json", dest="json_path")
     cmp_parser.add_argument("--markdown", dest="md_path",
@@ -924,8 +926,13 @@ def cmd_compare(args: argparse.Namespace, config: AppConfig) -> int:
         render_comparison_markdown,
     )
 
-    if not config.has_token:
-        print(f"✘ 比价需要麦当劳 MCP Token(环境变量 {TOKEN_ENV})", file=sys.stderr)
+    if getattr(args, "offline", False) and not config.offline:
+        # compare 的 --offline 是子命令级参数,这里覆盖全局配置
+        config.offline = True
+
+    if not config.has_token and not config.offline:
+        print(f"✘ 比价需要麦当劳 MCP Token(环境变量 {TOKEN_ENV});"
+              "离线演示请加 --offline", file=sys.stderr)
         return 2
 
     text = " ".join(args.text or [])
@@ -953,8 +960,9 @@ def cmd_compare(args: argparse.Namespace, config: AppConfig) -> int:
 
     best = comparison.best
     if best and best.plan:
-        print(f"  ▶ 想用最省的那家下单:")
-        print(f"    python -m mcdteam --store {best.store_code} order preview "
+        print("  ▶ 想用最省的那家下单(注意 --address-id 是全局参数,要写在子命令前面):")
+        print(f"    python -m mcdteam --store {best.store_code} "
+              f"--address-id {comparison.address_id} order preview "
               f"\"{text or '需求'}\" --mode {args.mode}")
         print()
 

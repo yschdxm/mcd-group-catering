@@ -2,229 +2,84 @@
   "success": true,
   "code": 200,
   "message": "请求成功",
-  "data": {
-    "addressId": "1036613970144243390849093445",
-    "byBeType": {
-      "2": [
+  "data": [
+    {
+      "storeCode": "1990684",
+      "beCode": "199068402",
+      "storeName": "麦当劳无锡云蝠大厦餐厅",
+      "reservation": true,
+      "reservationTimeOptions": [
         {
-          "storeCode": "1990684",
-          "beCode": "199068402",
-          "storeName": "麦当劳无锡云蝠大厦餐厅",
-          "reservation": true,
-          "reservationTimeOptions": [
-            {
-              "date": "2026-10-12",
-              "today": true,
-              "reservationOptionText": "夜市(17:30至23:59)"
-            },
-            {
-              "date": "2026-10-13",
-              "today": false,
-              "reservationOptionText": "夜市(00:00至00:29,17:30至23:59)，早餐(07:30至10:59)，午餐(11:00至14:59)，下午茶(15:00至17:29)"
-            },
-            {
-              "date": "2026-10-14",
-              "today": false,
-              "reservationOptionText": "夜市(00:00至00:29,17:30至23:59)，早餐(07:30至10:59)，午餐(11:00至14:59)，下午茶(15:00至17:29)"
-            }
-          ],
-          "businessStatus": true,
-          "businessStartTime": "07:00",
-          "businessEndTime": "23:59"
+          "date": "2026-10-12",
+          "today": true,
+          "reservationOptionText": "夜市(17:30至23:59)"
         },
         {
-          "storeCode": "1990572",
-          "beCode": "199057202",
-          "storeName": "麦当劳无锡五爱路餐厅",
-          "reservation": true,
-          "reservationTimeOptions": [
-            {
-              "date": "2026-10-12",
-              "today": true,
-              "reservationOptionText": "夜市(17:30至23:59)"
-            },
-            {
-              "date": "2026-10-13",
-              "today": false,
-              "reservationOptionText": "夜市(00:00至01:30,17:30至23:59)，早餐(07:30至10:59)，午餐(11:00至14:59)，下午茶(15:00至17:29)"
-            },
-            {
-              "date": "2026-10-14",
-              "today": false,
-              "reservationOptionText": "夜市(00:00至01:30,17:30至23:59)，早餐(07:30至10:59)，午餐(11:00至14:59)，下午茶(15:00至17:29)"
-            }
-          ],
-          "businessStatus": true,
-          "businessStartTime": "07:00",
-          "businessEndTime": "01:00"
+          "date": "2026-10-13",
+          "today": false,
+          "reservationOptionText": "夜市(00:00至00:29,17:30至23:59)，早餐(07:30至10:59)，午餐(11:00至14:59)，下午茶(15:00至17:29)"
         },
         {
-          "storeCode": "1990041",
-          "beCode": "199004102",
-          "storeName": "麦当劳无锡永乐路餐厅",
-          "reservation": true,
-          "reservationTimeOptions": [
-            {
-              "date": "2026-10-12",
-              "today": true,
-              "reservationOptionText": "夜市(17:30至23:59)"
-            },
-            {
-              "date": "2026-10-13",
-              "today": false,
-              "reservationOptionText": "夜市(00:00至00:29,00:30至05:29,17:30至23:59)，早餐(05:30至10:59)，午餐(11:00至14:59)，下午茶(15:00至17:29)"
-            },
-            {
-              "date": "2026-10-14",
-              "today": false,
-              "reservationOptionText": "夜市(00:00至00:29,00:30至05:29,17:30至23:59)，早餐(05:30至10:59)，午餐(11:00至14:59)，下午茶(15:00至17:29)"
-            }
-          ],
-          "businessStatus": true,
-          "businessStartTime": "00:00",
-          "businessEndTime": "23:59"
+          "date": "2026-10-14",
+          "today": false,
+          "reservationOptionText": "夜市(00:00至00:29,17:30至23:59)，早餐(07:30至10:59)，午餐(11:00至14:59)，下午茶(15:00至17:29)"
         }
       ],
-      "6": [
+      "businessStatus": true,
+      "businessStartTime": "07:00",
+      "businessEndTime": "23:59"
+    },
+    {
+      "storeCode": "1990572",
+      "beCode": "199057202",
+      "storeName": "麦当劳无锡五爱路餐厅",
+      "reservation": true,
+      "reservationTimeOptions": [
         {
-          "storeCode": "1990684",
-          "beCode": "199068481",
-          "storeName": "麦当劳无锡云蝠大厦餐厅",
-          "reservation": true,
-          "reservationTimeOptions": [
-            {
-              "date": "2026-10-12",
-              "today": true,
-              "reservationOptionText": "夜市(18:30至23:59)"
-            },
-            {
-              "date": "2026-10-13",
-              "today": false,
-              "reservationOptionText": "夜市(00:00至01:29,18:30至23:59)，早餐(08:30至11:59)，午餐(12:00至15:59)，下午茶(16:00至18:29)"
-            },
-            {
-              "date": "2026-10-14",
-              "today": false,
-              "reservationOptionText": "夜市(00:00至01:29,18:30至23:59)，早餐(08:30至11:59)，午餐(12:00至15:59)，下午茶(16:00至18:29)"
-            },
-            {
-              "date": "2026-10-15",
-              "today": false,
-              "reservationOptionText": "夜市(00:00至01:29,18:30至23:59)，早餐(08:30至11:59)，午餐(12:00至15:59)，下午茶(16:00至18:29)"
-            },
-            {
-              "date": "2026-10-16",
-              "today": false,
-              "reservationOptionText": "夜市(00:00至01:29,18:30至23:59)，早餐(08:30至11:59)，午餐(12:00至15:59)，下午茶(16:00至18:29)"
-            },
-            {
-              "date": "2026-10-17",
-              "today": false,
-              "reservationOptionText": "夜市(00:00至01:29,18:30至23:59)，早餐(08:30至11:59)，午餐(12:00至15:59)，下午茶(16:00至18:29)"
-            },
-            {
-              "date": "2026-10-18",
-              "today": false,
-              "reservationOptionText": "夜市(00:00至01:29,18:30至23:59)，早餐(08:30至11:59)，午餐(12:00至15:59)，下午茶(16:00至18:29)"
-            }
-          ],
-          "businessStatus": true,
-          "businessStartTime": "07:00",
-          "businessEndTime": "23:59"
+          "date": "2026-10-12",
+          "today": true,
+          "reservationOptionText": "夜市(17:30至23:59)"
         },
         {
-          "storeCode": "1990572",
-          "beCode": "199057281",
-          "storeName": "麦当劳无锡五爱路餐厅",
-          "reservation": true,
-          "reservationTimeOptions": [
-            {
-              "date": "2026-10-12",
-              "today": true,
-              "reservationOptionText": "夜市(18:30至23:59)"
-            },
-            {
-              "date": "2026-10-13",
-              "today": false,
-              "reservationOptionText": "夜市(00:00至02:30,18:30至23:59)，早餐(08:30至11:59)，午餐(12:00至15:59)，下午茶(16:00至18:29)"
-            },
-            {
-              "date": "2026-10-14",
-              "today": false,
-              "reservationOptionText": "夜市(00:00至02:30,18:30至23:59)，早餐(08:30至11:59)，午餐(12:00至15:59)，下午茶(16:00至18:29)"
-            },
-            {
-              "date": "2026-10-15",
-              "today": false,
-              "reservationOptionText": "夜市(00:00至02:30,18:30至23:59)，早餐(08:30至11:59)，午餐(12:00至15:59)，下午茶(16:00至18:29)"
-            },
-            {
-              "date": "2026-10-16",
-              "today": false,
-              "reservationOptionText": "夜市(00:00至02:30,18:30至23:59)，早餐(08:30至11:59)，午餐(12:00至15:59)，下午茶(16:00至18:29)"
-            },
-            {
-              "date": "2026-10-17",
-              "today": false,
-              "reservationOptionText": "夜市(00:00至02:30,18:30至23:59)，早餐(08:30至11:59)，午餐(12:00至15:59)，下午茶(16:00至18:29)"
-            },
-            {
-              "date": "2026-10-18",
-              "today": false,
-              "reservationOptionText": "夜市(00:00至02:30,18:30至23:59)，早餐(08:30至11:59)，午餐(12:00至15:59)，下午茶(16:00至18:29)"
-            }
-          ],
-          "businessStatus": true,
-          "businessStartTime": "07:00",
-          "businessEndTime": "01:00"
+          "date": "2026-10-13",
+          "today": false,
+          "reservationOptionText": "夜市(00:00至01:30,17:30至23:59)，早餐(07:30至10:59)，午餐(11:00至14:59)，下午茶(15:00至17:29)"
         },
         {
-          "storeCode": "1990041",
-          "beCode": "199004181",
-          "storeName": "麦当劳无锡永乐路餐厅",
-          "reservation": true,
-          "reservationTimeOptions": [
-            {
-              "date": "2026-10-12",
-              "today": true,
-              "reservationOptionText": "夜市(18:30至23:59)"
-            },
-            {
-              "date": "2026-10-13",
-              "today": false,
-              "reservationOptionText": "夜市(00:00至01:29,01:30至06:29,18:30至23:59)，早餐(06:30至11:59)，午餐(12:00至15:59)，下午茶(16:00至18:29)"
-            },
-            {
-              "date": "2026-10-14",
-              "today": false,
-              "reservationOptionText": "夜市(00:00至01:29,01:30至06:29,18:30至23:59)，早餐(06:30至11:59)，午餐(12:00至15:59)，下午茶(16:00至18:29)"
-            },
-            {
-              "date": "2026-10-15",
-              "today": false,
-              "reservationOptionText": "夜市(00:00至01:29,01:30至06:29,18:30至23:59)，早餐(06:30至11:59)，午餐(12:00至15:59)，下午茶(16:00至18:29)"
-            },
-            {
-              "date": "2026-10-16",
-              "today": false,
-              "reservationOptionText": "夜市(00:00至01:29,01:30至06:29,18:30至23:59)，早餐(06:30至11:59)，午餐(12:00至15:59)，下午茶(16:00至18:29)"
-            },
-            {
-              "date": "2026-10-17",
-              "today": false,
-              "reservationOptionText": "夜市(00:00至01:29,01:30至06:29,18:30至23:59)，早餐(06:30至11:59)，午餐(12:00至15:59)，下午茶(16:00至18:29)"
-            },
-            {
-              "date": "2026-10-18",
-              "today": false,
-              "reservationOptionText": "夜市(00:00至01:29,01:30至06:29,18:30至23:59)，早餐(06:30至11:59)，午餐(12:00至15:59)，下午茶(16:00至18:29)"
-            }
-          ],
-          "businessStatus": true,
-          "businessStartTime": "00:00",
-          "businessEndTime": "23:59"
+          "date": "2026-10-14",
+          "today": false,
+          "reservationOptionText": "夜市(00:00至01:30,17:30至23:59)，早餐(07:30至10:59)，午餐(11:00至14:59)，下午茶(15:00至17:29)"
         }
-      ]
+      ],
+      "businessStatus": true,
+      "businessStartTime": "07:00",
+      "businessEndTime": "01:00"
+    },
+    {
+      "storeCode": "1990041",
+      "beCode": "199004102",
+      "storeName": "麦当劳无锡永乐路餐厅",
+      "reservation": true,
+      "reservationTimeOptions": [
+        {
+          "date": "2026-10-12",
+          "today": true,
+          "reservationOptionText": "夜市(17:30至23:59)"
+        },
+        {
+          "date": "2026-10-13",
+          "today": false,
+          "reservationOptionText": "夜市(00:00至00:29,00:30至05:29,17:30至23:59)，早餐(05:30至10:59)，午餐(11:00至14:59)，下午茶(15:00至17:29)"
+        },
+        {
+          "date": "2026-10-14",
+          "today": false,
+          "reservationOptionText": "夜市(00:00至00:29,00:30至05:29,17:30至23:59)，早餐(05:30至10:59)，午餐(11:00至14:59)，下午茶(15:00至17:29)"
+        }
+      ],
+      "businessStatus": true,
+      "businessStartTime": "00:00",
+      "businessEndTime": "23:59"
     }
-  }
+  ]
 }

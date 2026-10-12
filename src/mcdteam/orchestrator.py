@@ -205,10 +205,13 @@ class Session:
     def _offline_store_records(self, be_type: int) -> List[Dict[str, Any]]:
         """离线模式下从 ``delivery-query-stores.<addressId>.json`` 读门店列表。
 
-        快照结构::
+        快照的 ``data`` 与真实接口保持一致 —— **直接就是门店数组**::
 
-            {"success": true, "data": {"addressId": "...",
-                                       "byBeType": {"2": [...], "6": [...]}}}
+            {"success": true, "data": [{"storeCode": ..., "beCode": ...}, ...]}
+
+        也兼容一种方便手工维护的分场景写法(``data.byBeType["2"]``)::
+
+            {"success": true, "data": {"byBeType": {"2": [...], "6": [...]}}}
 
         用途:让 ``--offline`` 也能解析出门店名与 ``beCode``
         —— 否则离线演示只能看到门店编码,而且外送/团餐场景会因为缺 ``beCode``
@@ -227,11 +230,21 @@ class Session:
                 payload = json.load(handle)
         except (OSError, json.JSONDecodeError):
             return []
-        data = payload.get("data") if isinstance(payload, dict) else None
-        if not isinstance(data, dict):
+        if not isinstance(payload, dict):
             return []
-        by_type = data.get("byBeType") or {}
-        records = by_type.get(str(be_type)) or by_type.get(be_type) or []
+        data = payload.get("data")
+        records: Any = []
+        if isinstance(data, list):
+            records = data
+        elif isinstance(data, dict):
+            by_type = data.get("byBeType")
+            if isinstance(by_type, dict):
+                records = by_type.get(str(be_type)) or by_type.get(be_type) or []
+            else:
+                for key in ("stores", "list", "items"):
+                    if isinstance(data.get(key), list):
+                        records = data[key]
+                        break
         self.client.snapshot_hits.append(f"delivery-query-stores <- {path}")
         return [r for r in records if isinstance(r, dict)]
 

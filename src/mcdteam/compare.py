@@ -158,7 +158,11 @@ class StoreComparison:
 
 def candidate_stores(client, address_id: str,
                      be_type: int = 2) -> List[Dict[str, Any]]:
-    """列出某地址下的可配送门店。"""
+    """列出某地址下的可配送门店。
+
+    离线模式下从 ``delivery-query-stores.<addressId>.json`` 快照读取
+    (客户端会自动兜底),所以比价在无网络时也能演示。
+    """
     return list(client.resolve_delivery_stores(address_id, be_type=be_type) or [])
 
 

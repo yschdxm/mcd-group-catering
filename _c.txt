@@ -1,0 +1,26 @@
+fix: 离线比价可用性 + 快照命名与地址快照
+
+补齐离线多门店比价所需的最后两块拼图,并修正快照形状问题。
+
+修复
+- 客户端快照查找支持**按 addressId 命名**(此前只认 storeCode),
+  否则 delivery-query-stores 在离线时会直接抛「跳过网络请求」
+- _offline_store_records 兼容真实返回结构(data 直接是门店数组),
+  同时兼容便于手工维护的 data.byBeType{"2": [...]} 写法
+- compare 子命令新增 --offline;并在缺少 Token 时提示加 --offline
+- 下单提示补上 --address-id(它是全局参数,必须写在子命令前面,
+  此前提示的命令在部分场景会失败)
+
+新增快照
+- fixtures/delivery-query-addresses.json —— 地址列表(已脱敏:
+  联系人与电话置空,地址只保留到街区级,不含门牌与个人信息)
+- fixtures/delivery-query-stores.<addressId>.json 改为与真实接口一致的形状
+
+效果:完全离线也能演示多门店比价
+  8 人预算 300:云蝠 269.00 / 五爱路 276.25 / 永乐路 286.00,最省省 ¥17.00
+
+清理
+- 移除误提交的临时提交信息文件 _msg.txt 并加入 .gitignore
+
+测试 176 项全部通过;密钥扫描 66 个文件零命中;
+另做了快照个人信息扫描,确认无手机号/联系人/电话
