@@ -37,6 +37,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tupl
 
 from ..data.coupons import Coupon, Promotion
 from ..data.menu import MenuCatalog, MenuItem, Role
+from ..mcp.errors import MCPError
 from .constraints import CateringRequirements, role_quota
 
 ProgressFn = Optional[Callable[[str], None]]
@@ -703,6 +704,16 @@ class CateringPlanner:
                 "nutrition_gap",
                 f"有 {missing} 件餐品缺少官方营养数据,营养合计为下限值而非精确值",
             )
+        # 主食完全没有营养数据时,营养合计会严重失真,必须显著提示,
+        # 避免用户把「人均 38 kcal」当成真实值(实测:素食场景只选到套餐时会踩到)
+        main_lines = [line for line in plan.lines if line.item.role is Role.MAIN]
+        if main_lines and all(line.item.nutrition is None for line in main_lines):
+            plan.warn(
+                "nutrition_mains_missing",
+                "本单所有主食(均为套餐类)都没有官方营养数据,下方「营养参考」"
+                "只统计到有数据的饮品与小食,数值严重偏低,请勿当作整单营养;"
+                "如需准确值,可调用 query-meal-detail 拆解套餐组成后累加",
+            )
         req = self.requirements
         if req.max_kcal_per_person and plan.per_person("kcal") > req.max_kcal_per_person:
             plan.warn(
@@ -745,6 +756,7 @@ def verify_plan_with_api(client, store_context, plan: CateringPlan,
             be_type=store_context.be_type,
             be_code=store_context.be_code,
             reservation_date=store_context.reservation_date,
+            gm_service_code=getattr(store_context, "gm_service_code", ""),
         )
     except Exception as exc:  # noqa: BLE001 - 回算失败不影响方案可用性
         plan.warn("verify_failed", f"服务端价格回算失败,当前金额为本地估算:{exc}")
@@ -786,7 +798,7 @@ def verify_plan_with_api(client, store_context, plan: CateringPlan,
 
 
 def fit_plan_to_budget(client, store_context, plan: CateringPlan, *,
-                       max_rounds: int = 4, progress: ProgressFn = None) -> CateringPlan:
+                       max_rounds: int = 8, progress: ProgressFn = None) -> CateringPlan:
     """门店实价高于本地估算时,自动削减小食/饮料直到回到预算内。
 
     为什么需要这一步:菜单价格快照来自上一次查询,门店促销、规格或取餐方式
@@ -800,6 +812,7 @@ def fit_plan_to_budget(client, store_context, plan: CateringPlan, *,
     if not plan.budget_cents or plan.payable_cents <= plan.budget_cents:
         return plan
 
+    cuts: List[str] = []
     for round_index in range(max(1, max_rounds)):
         over = plan.payable_cents - plan.budget_cents
         if over <= 0:
@@ -824,7 +837,15 @@ def fit_plan_to_budget(client, store_context, plan: CateringPlan, *,
         target.quantity -= 1
         plan.lines = [l for l in plan.lines if l.quantity > 0]
         plan.recalc()
-        plan.warn("auto_cut", f"为回到预算内,已减少 1 份「{target.item.name}」")
+        cuts.append(target.item.name)
+        plan.clear_warnings("auto_cut")
+        counts: Dict[str, int] = {}
+        for name in cuts:
+            counts[name] = counts.get(name, 0) + 1
+        plan.warn(
+            "auto_cut",
+            "为回到预算内,已减少:" + "、".join(f"{name}×{n}" for name, n in counts.items()),
+        )
         if progress:
             progress(f"超预算 ¥{over / 100:.2f},削减 1 份「{target.item.name}」并重新核价")
         if not plan.lines:
@@ -836,6 +857,111 @@ def fit_plan_to_budget(client, store_context, plan: CateringPlan, *,
             "still_over_budget",
             f"仍超出预算 ¥{(plan.payable_cents - plan.budget_cents) / 100:,.2f},"
             "建议提高预算或减少人数",
+        )
+    return plan
+
+
+def enrich_plan_nutrition(client, store_context, plan: CateringPlan, book,
+                          *, max_lookups: int = 8,
+                          progress: ProgressFn = None) -> CateringPlan:
+    """对缺少官方营养数据的套餐,用 ``query-meal-detail`` 拆解组成后累加。
+
+    为什么需要:官方营养表 ``list-nutrition-foods`` 只覆盖单品,
+    套餐(菜单里约三成条目)完全没有营养数据。实测在素食等场景下,
+    可用主食只剩套餐,不做拆解就会出现「10 个人整单只有 384 kcal」这种
+    严重失真的结果。
+
+    做法:套餐的组成子项(**名称**)能命中官方营养表,把默认选中的子项
+    逐个匹配再累加即可。子项编码本身不能下单(实测 ``calculate-price``
+    会回「商品已售罄或不可售」),所以只用于营养计算,不参与价格。
+
+    触发条件刻意放宽为「任何缺营养数据的行」:实测「汉堡开心乐园餐」这类
+    含多件的商品会被推断成**主食**角色(而不是套餐),用角色判断会漏掉。
+    多查一次 ``query-meal-detail`` 的成本很低,查不到就跳过。
+
+    一致性防护:实测同一编码在 ``calculate-price`` 与 ``query-meal-detail``
+    里可能返回**不同的名称**(例如编码 9900015602 前者叫「牛肉堡单品精选」、
+    后者是「大堡口福三件套」)。因此当详情是多件套餐、且名称与本地菜单
+    明显不符时,**拒绝**使用拆解结果并告警,避免把错误营养写进报告。
+    """
+    from ..data.nutrition import breakdown_combo, normalize_name
+
+    targets = [line.item for line in plan.lines if line.item.nutrition is None]
+    if not targets:
+        return plan
+
+    derived = 0
+    partial: List[str] = []
+    failures = 0
+    mismatched: List[str] = []
+    for item in targets[:max_lookups]:
+        if progress:
+            progress(f"拆解含多件餐品营养:{item.name}")
+        try:
+            result = client.call_tool("query-meal-detail", {
+                **store_context.store_arguments(),
+                "code": item.code,
+            })
+        except MCPError:
+            failures += 1
+            continue
+        if not result.success:
+            failures += 1
+            continue
+        data = result.data or {}
+        rounds = data.get("rounds") or []
+        detail_name = str(data.get("name") or "").strip()
+        # 「含多件」判定:至少两个 round 里选到了东西(单品汉堡通常只有一个 round)
+        multi_item = sum(
+            1 for round_info in rounds
+            if any(int(choice.get("quantity") or 0) > 0
+                   for choice in round_info.get("choices", []) or [])
+        ) >= 2
+        if multi_item and item.name and detail_name and item.nutrition is None:
+            local = normalize_name(item.name)
+            remote = normalize_name(detail_name)
+            if local not in remote and remote not in local:
+                mismatched.append(f"{item.name} / {detail_name}")
+                continue
+        breakdown = breakdown_combo(data, book)
+        if not breakdown.matched:
+            continue
+        item.nutrition = breakdown.nutrition
+        item.nutrition_derived = True
+        derived += 1
+        if breakdown.missing:
+            partial.append(f"{item.name}(缺 {'、'.join(breakdown.missing)})")
+
+    if derived:
+        plan.recalc()
+        plan.clear_warnings("nutrition_mains_missing")
+        plan.clear_warnings("nutrition_gap")
+        # 用拆解结果重算缺口提示:有些含多件餐品已经补上营养,旧提示会失真
+        totals = plan.nutrition_totals()
+        counted = int(totals.get("_counted_quantity", 0))
+        if counted < plan.total_quantity:
+            plan.warn(
+                "nutrition_gap",
+                f"有 {plan.total_quantity - counted} 件餐品缺少官方营养数据,"
+                "营养合计为下限值而非精确值",
+            )
+        plan.api_trace.append(f"query-meal-detail 拆解 {derived} 个含多件餐品的营养")
+        if partial:
+            plan.warn(
+                "combo_partial",
+                "以下餐品的营养为部分子项累加,实际值会略高:" + ";".join(partial),
+            )
+    elif failures:
+        plan.warn(
+            "combo_detail_unavailable",
+            f"未能拆解 {failures} 个含多件餐品的营养(接口不可用或缺少快照),"
+            "营养参考仍为下限值",
+        )
+    if mismatched:
+        plan.warn(
+            "code_name_mismatch",
+            "以下编码在「价格接口」与「详情接口」返回的名称不一致,已放弃拆解其营养"
+            "(以门店实际商品为准):" + ";".join(mismatched),
         )
     return plan
 

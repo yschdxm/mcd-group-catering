@@ -89,6 +89,10 @@ class StoreContext:
     address_id: str = ""
     reservation_date: str = ""
     city: str = ""
+    #: 企业团餐的助餐服务码(来自 query-meal-assistance)。
+    #: **务必传**:实测团餐场景下 calculate-price / create-order 缺少它会被拒绝,
+    #: 错误文案是「团餐助餐服务参数缺失」。
+    gm_service_code: str = ""
 
     def __post_init__(self) -> None:
         if not str(self.store_code or "").strip():
@@ -120,8 +124,32 @@ class StoreContext:
             arguments["reservationDate"] = self.reservation_date
         return arguments
 
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "storeCode": self.store_code,
+            "storeName": self.store_name,
+            "mode": self.mode.value,
+            "orderType": self.order_type,
+            "beType": self.be_type,
+            "beCode": self.be_code or None,
+            "gmServiceCode": self.gm_service_code or None,
+            "reservationDate": self.reservation_date or None,
+            "addressId": self.address_id or None,
+            "city": self.city or None,
+        }
+
     def with_reservation(self, reservation_date: str) -> "StoreContext":
         return replace(self, reservation_date=reservation_date)
+
+    def with_gm_service(self, gm_service_code: str) -> "StoreContext":
+        return replace(self, gm_service_code=gm_service_code)
+
+    def price_arguments(self) -> Dict[str, Any]:
+        """生成价格/下单类工具的完整参数(含团餐助餐服务码)。"""
+        arguments = self.store_arguments()
+        if self.gm_service_code:
+            arguments["gmServiceCode"] = self.gm_service_code
+        return arguments
 
     @classmethod
     def from_store_record(cls, record: Dict[str, Any], mode: FulfillmentMode,
@@ -138,22 +166,11 @@ class StoreContext:
         bits = [f"门店 {self.store_name or self.store_code}({self.store_code})", self.mode.label]
         if self.be_code:
             bits.append(f"beCode={self.be_code}")
+        if self.gm_service_code:
+            bits.append(f"助餐={self.gm_service_code}")
         if self.reservation_date:
             bits.append(f"预约 {self.reservation_date}")
         return " · ".join(bits)
-
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "storeCode": self.store_code,
-            "storeName": self.store_name,
-            "mode": self.mode.value,
-            "orderType": self.order_type,
-            "beType": self.be_type,
-            "beCode": self.be_code or None,
-            "reservationDate": self.reservation_date or None,
-            "addressId": self.address_id or None,
-            "city": self.city or None,
-        }
 
 
 def resolve_store_record(records: list, store_code: str) -> Optional[Dict[str, Any]]:

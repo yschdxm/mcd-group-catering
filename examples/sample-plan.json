@@ -319,7 +319,7 @@
     }
   },
   "context": {
-    "generatedAt": "2026-10-12 17:40:12",
+    "generatedAt": "2026-10-12 18:00:43",
     "config": {
       "endpoint": "https://mcp.mcd.cn",
       "token": "(未设置)",
@@ -336,6 +336,7 @@
       "orderType": 2,
       "beType": 2,
       "beCode": "offline",
+      "gmServiceCode": null,
       "reservationDate": "2026-10-13 12:00",
       "addressId": null,
       "city": null

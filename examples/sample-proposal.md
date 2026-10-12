@@ -1,6 +1,6 @@
 # 团餐采购提案 · 1950564
 
-> 生成时间:2026-10-12 17:40:12　数据来源:离线快照兜底:list-nutrition-foods, query-meals, query-store-coupons
+> 生成时间:2026-10-12 18:00:43　数据来源:离线快照兜底:list-nutrition-foods, query-meals, query-store-coupons
 
 ## 一、需求与理解
 
@@ -61,7 +61,7 @@
 
 ```json
 {
-  "generatedAt": "2026-10-12 17:40:12",
+  "generatedAt": "2026-10-12 18:00:43",
   "config": {
     "endpoint": "https://mcp.mcd.cn",
     "token": "(未设置)",
@@ -78,6 +78,7 @@
     "orderType": 2,
     "beType": 2,
     "beCode": "offline",
+    "gmServiceCode": null,
     "reservationDate": "2026-10-13 12:00",
     "addressId": null,
     "city": null

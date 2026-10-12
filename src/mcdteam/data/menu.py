@@ -22,6 +22,7 @@ from enum import Enum
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 from .nutrition import Nutrition, NutritionBook, normalize_name
+from ..mcp.errors import MCPBusinessError
 
 
 class Role(str, Enum):
@@ -140,6 +141,8 @@ class MenuItem:
     nutrition: Optional[Nutrition] = None
     is_combo: bool = False
     sold_out: bool = False
+    #: 营养是否由套餐组成累加得出(而非官方营养表直接命中)
+    nutrition_derived: bool = False
     #: 同一餐品在菜单里可能对应多个编码(实测:开心乐园餐有两个 spu 编码),
     #: 这里保留被合并掉的编码,报告里会提示,避免用户以为漏了东西
     aliases: List[str] = field(default_factory=list)
@@ -217,6 +220,7 @@ class MenuItem:
             "tags": list(self.tags),
             "isCombo": self.is_combo,
             "soldOut": self.sold_out,
+            "nutritionDerived": self.nutrition_derived,
             "aliases": list(self.aliases),
             "nutrition": self.nutrition.to_dict() if self.nutrition else None,
             "flags": {
@@ -376,17 +380,24 @@ def build_catalog(meals_payload: Dict[str, Any],
 
 
 def collect_price_map(client, store_context, codes: Sequence[str], *,
-                      batch_size: int = 6, progress=None) -> Dict[str, Dict[str, Any]]:
+                      batch_size: int = 6, progress=None,
+                      raise_on_total_failure: bool = True) -> Dict[str, Dict[str, Any]]:
     """逐个批次用 ``calculate-price`` 反查菜名与单价。
 
     为什么要分批:实测把 117 个 code 一次性传入时服务端直接返回
     ``商品已售罄或不可售``,整批失败;而 6 个一批时失败率极低,且失败的
     批次可以逐条重试定位到具体某个下架商品。这一策略把菜单覆盖率从
     0% 提升到 **99.1%**(117 个 code 中 116 个成功取价)。
+
+    ``raise_on_total_failure``:当一个都没取到时抛出明确异常。**不要静默返回空表** ——
+    实测团餐场景漏传 ``gmServiceCode`` 时,``calculate-price`` 全部返回
+    ``success=false``,若静默处理就会生成一份空方案,用户看到的是「合计 ¥0.00」
+    这种毫无信息量的结果。
     """
     price_map: Dict[str, Dict[str, Any]] = {}
     unique = [c for c in dict.fromkeys(str(c) for c in codes) if c]
     failed_batches: List[List[str]] = []
+    last_error: str = ""
 
     for start in range(0, len(unique), max(1, batch_size)):
         batch = unique[start:start + max(1, batch_size)]
@@ -400,8 +411,10 @@ def collect_price_map(client, store_context, codes: Sequence[str], *,
                 be_type=store_context.be_type,
                 be_code=store_context.be_code,
                 reservation_date=store_context.reservation_date,
+                gm_service_code=getattr(store_context, "gm_service_code", ""),
             )
-        except Exception:  # noqa: BLE001 - 批失败不影响整体,退化为逐条
+        except Exception as exc:  # noqa: BLE001 - 批失败不影响整体,退化为逐条
+            last_error = str(exc)
             failed_batches.append(batch)
             continue
         for product in data.get("productList", []) or []:
@@ -422,8 +435,10 @@ def collect_price_map(client, store_context, codes: Sequence[str], *,
                     order_type=store_context.order_type,
                     be_type=store_context.be_type,
                     be_code=store_context.be_code,
+                    gm_service_code=getattr(store_context, "gm_service_code", ""),
                 )
-            except Exception:  # noqa: BLE001
+            except Exception as exc:  # noqa: BLE001
+                last_error = str(exc)
                 continue
             for product in data.get("productList", []) or []:
                 found = str(product.get("productCode", ""))
@@ -433,4 +448,13 @@ def collect_price_map(client, store_context, codes: Sequence[str], *,
                         "subtotal": int(product.get("subtotal") or 0),
                     }
 
+    if unique and not price_map and raise_on_total_failure:
+        raise MCPBusinessError(
+            "全部门店餐品取价失败" + (f",服务端最后一次回复:{last_error}" if last_error else "")
+            + "。请检查 storeCode / orderType / beType / beCode 是否匹配"
+            +(f";企业团餐还需要 gmServiceCode(当前为 "
+              f"{getattr(store_context, 'gm_service_code', '') or '空'})" 
+              if getattr(store_context, "be_type", 0) == 6 else ""),
+            tool="calculate-price",
+        )
     return price_map

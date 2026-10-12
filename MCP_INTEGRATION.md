@@ -37,11 +37,11 @@
 | 5 | `query-meals` ✅ | 门店在售餐品 | `storeCode`、`orderType`、`beType`、`beCode?` | 拿到 117 个可售编码与分类/标签,作为菜单索引的骨架 |
 | 6 | `calculate-price` ✅ | 价格计算 | `storeCode`、`items[]`、`orderType`、`beType` | ① 批量反查菜名与单价 ② 回算方案真实总价 ③ 超预算时逐轮重算 |
 | 7 | `list-nutrition-foods` ✅ | 餐品营养 | — | 解析 160 条营养记录,挂到菜单上 |
-| 8 | `query-meal-detail` | 餐品详情 | `storeCode`、`code`、`orderType`、`beType` | 预留:套餐营养拆解(见「后续计划」) |
+| 8 | `query-meal-detail` ✅ | 餐品组成 | `storeCode`、`code`、`orderType`、`beType` | **拆解套餐营养**:把默认组成子项按名称匹配营养表后累加 |
 | 9 | `query-store-coupons` ✅ | 门店可用券 | `storeCode`、`orderType`、`beType` | 取券并叠加到方案上 |
 | 10 | `query-my-coupons` ✅ | 卡包券 | `page`、`pageSize` | 兜底补充可用券 |
-| 11 | `query-promotions` | 团餐满减/满折 | `storeCode`、`beCode`、`beType=6`、`orderType=2` | 企业团餐场景解析促销规则 |
-| 12 | `query-meal-assistance` | 团餐助餐服务 | `storeCode`、`orderType=2`、`beType=6` | 团餐配送方式校验 |
+| 11 | `query-promotions` ✅ | 团餐满减/满折 | `storeCode`、`beCode`、`beType=6`、`orderType=2` | 企业团餐场景解析促销规则 |
+| 12 | `query-meal-assistance` ✅ | 团餐助餐服务 | `storeCode`、`orderType=2`、`beType=6` | **取 `gmServiceCode`**:团餐取价与下单的前置条件 |
 | 13 | `campaign-calendar` | 活动日历 | — | 提示当月在进行的活动 |
 | 14 | `create-order` | 下单 | `storeCode`、`items[]`、`takeWayCode`、`reservationDate` | **仅按用户明确确认后调用**,绝不使用快照兜底 |
 
@@ -92,9 +92,13 @@
 | 麦乐送到家 | 2 | 2 | **必传** | `delivery-query-stores`(beType=2) |
 | 企业团餐 | 2 | 6 | **必传** | `delivery-query-stores`(beType=6) |
 
-本项目把这张表编码成 `mcdteam.mcp.context.FulfillmentMode` 枚举,
-`StoreContext.store_arguments()` 负责生成正确参数,并有单元测试覆盖
-(`tests/test_solver.py::test_store_context_*`)。
+企业团餐还额外需要 `gmServiceCode`(取自 `query-meal-assistance`),
+缺失时 `calculate-price` / `create-order` 会回「团餐助餐服务参数缺失」——
+详见下文「实测踩坑实录」第 8 条。
+
+本项目把这张表编码成 `mcdteam.mcp.context.FulfillmentMode` 与 `StoreContext`
+(`store_arguments()` 给门店类工具用,`price_arguments()` 额外带上助餐服务码),
+并有单元测试覆盖(`tests/test_solver.py::test_store_context_*`)。
 
 ### `code` → `productCode` 的字段映射(最容易静默出错的地方)
 
@@ -190,11 +194,54 @@ body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("ut
 ### 7. 官方营养数据不覆盖套餐
 
 `list-nutrition-foods` 的 160 条记录只覆盖单品;菜单里 117 个编码中约
-60%~70% 能直接匹配到营养数据,套餐类基本缺失。本项目的做法是:
+60%~70% 能直接匹配到营养数据,套餐类基本缺失。
 
-* 匹配不到的餐品**不按 0 计入**营养合计,而是单独统计并在报告中提示
-  「有 N 件餐品缺少官方营养数据,营养合计为下限值」;
-* 预留 `query-meal-detail` 的套餐拆解路径(按官方默认组成累加各子项营养)。
+**本项目的解法:用 `query-meal-detail` 拆解套餐组成后累加。**
+
+* 详情接口会返回 `rounds[].choices[]`,默认选中的子项(如
+  `汉堡包`、`迷你薯条`、`纯牛奶`)都是单品,**按名称能命中官方营养表**;
+* 这些子项编码**不能**直接下单(实测 `calculate-price` 会回
+  「商品已售罄或不可售」),所以只用于营养计算,不参与价格;
+* 判定「含多件」的依据是「至少两个 round 里选到了东西」,而不是角色分类 ——
+  实测「汉堡开心乐园餐」会被推断成**主食**角色,用角色判断会漏掉。
+
+效果对比(10 人素食团餐,主食全部是含多件的乐园餐):
+
+| 方案 | 人均热量 | 说明 |
+|---|---:|---|
+| 不做拆解 | 38 kcal | 只有饮品与小食有数据,数值完全不可用 |
+| 拆解后 | 459 kcal | 覆盖到主食,量级正常 |
+
+### 8. 团餐的 `calculate-price` / `create-order` 必须带 `gmServiceCode`
+
+企业团餐(`beType=6`)场景下,即使 `storeCode` / `beCode` 都对,
+`calculate-price` 仍会返回::
+
+    {"success":false,"code":600061,"message":"团餐助餐服务参数缺失"}
+
+正确顺序是:先 `query-meal-assistance` 拿到助餐服务,
+把 `selected=true` 且 `enable=true` 的那一项的 `gmServiceCode`
+(例如 `GMS001 保鲜速达`)透传给 `calculate-price`。
+
+**注意 `query-meals` 在没有 `gmServiceCode` 时仍能正常返回菜单**,
+所以这个错误只会在取价阶段暴露 —— 如果再叠加「取价失败静默跳过」,
+最终表现是一份「合计 ¥0.00」的空方案,极难定位。本项目因此:
+
+1. 选店后立即解析并缓存 `gmServiceCode`;
+2. 取价全军覆没时**抛出明确异常**而不是返回空表
+   (`collect_price_map(..., raise_on_total_failure=True)`)。
+
+### 9. 同一编码在不同接口可能返回不同名称
+
+实测编码 `9900015602`:
+
+* `calculate-price` 返回的名称是 **「牛肉堡单品精选」**;
+* `query-meal-detail` 返回的名称是 **「大堡口福三件套」**(含 3 个 round)。
+
+如果直接按详情拆解营养,就会给「牛肉堡单品精选」贴上三件套的营养。
+本项目的处理:当详情是多件套餐、且名称与本地菜单明显不符时,
+**放弃拆解并在报告中告警**(`以下编码在「价格接口」与「详情接口」返回的名称不一致`),
+以门店实际商品为准,不做静默猜测。
 
 ---
 
@@ -264,14 +311,13 @@ body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("ut
 
 ## 七、后续计划
 
-1. **套餐营养拆解**:接入 `query-meal-detail` 的官方默认组成,
-   按子项累加营养,把营养覆盖率从 ~65% 提到 ~90%。
-2. **团餐促销求解**:`query-promotions` 的 `ruleDetail` 原始结构尚未文档化,
+1. **团餐促销精确寻优**:`query-promotions` 的 `ruleDetail` 原始结构尚未文档化,
    目前已做宽口径解析;后续用真实规则样本反推字段语义,接入满减的精确寻优。
-3. **企业微信 / 飞书机器人**:把 `plan` 子命令封装成机器人指令,
+2. **企业微信 / 飞书机器人**:把 `plan` 子命令封装成机器人指令,
    让行政在群里直接下单。
-4. **历史偏好学习**:基于 `order-list` 统计团队口味分布,
+3. **历史偏好学习**:基于 `order-list` 统计团队口味分布,
    把「上次大家吃剩了什么」纳入下一次的配比搜索。
+4. **多门店比价**:同一地址下比较多家可配送门店的总价与配送时效。
 
 ---
 

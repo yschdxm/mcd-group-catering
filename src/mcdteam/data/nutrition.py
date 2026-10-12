@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, Iterable, List, Optional, Sequence
 
 _HEADER_RE = re.compile(r"^\s*\[(?P<count>\d+)\]\s*\{(?P<columns>[^}]*)\}\s*:?\s*$")
@@ -266,3 +266,116 @@ def _longest_common_substring(a: str, b: str) -> int:
                 best = max(best, current[j])
         previous = current
     return best
+
+
+# --------------------------------------------------------------- 套餐营养拆解
+@dataclass
+class ComboBreakdown:
+    """套餐的营养拆解结果。
+
+    ``query-meal-detail`` 会返回套餐的组成 ``rounds[].choices[]``,
+    每个 choice 带 ``code`` / ``name`` / ``quantity`` / ``isDefault``。
+    这些子项编码**不能**直接下单(实测 ``calculate-price`` 会回
+    「商品已售罄或不可售」),但它们的**名称**能命中官方营养表,
+    所以按名称逐个匹配再累加,即可把套餐的营养补出来。
+
+    这是本项目提高营养覆盖率的关键手段:官方营养表只覆盖单品,
+    套餐(菜单里约三成条目)本来完全没有营养数据。
+    """
+
+    combo_code: str
+    combo_name: str
+    nutrition: Nutrition
+    matched: List[str] = field(default_factory=list)
+    missing: List[str] = field(default_factory=list)
+
+    @property
+    def coverage(self) -> float:
+        total = len(self.matched) + len(self.missing)
+        return round(len(self.matched) / total, 4) if total else 0.0
+
+    @property
+    def complete(self) -> bool:
+        return not self.missing
+
+    def describe(self) -> str:
+        parts = [f"{name}" for name in self.matched]
+        text = " + ".join(parts) if parts else "无可匹配子项"
+        if self.missing:
+            text += f"(未匹配:{'、'.join(self.missing)})"
+        return f"{self.combo_name} = {text}"
+
+    def to_dict(self) -> Dict[str, object]:
+        return {
+            "comboCode": self.combo_code,
+            "comboName": self.combo_name,
+            "matched": list(self.matched),
+            "missing": list(self.missing),
+            "coverage": self.coverage,
+            "nutrition": self.nutrition.to_dict(),
+        }
+
+
+def parse_meal_detail(data: Dict) -> List[Dict[str, object]]:
+    """从 ``query-meal-detail`` 的 ``data`` 中抽出默认选中的子项。
+
+    只取 ``quantity > 0`` 的项:同一 round 内 ``isDefault=1`` 但 ``quantity=0``
+    表示「可选但未选中」(例如开心乐园餐里既列了纯牛奶也列了纯悦)。
+    """
+    children: List[Dict[str, object]] = []
+    for round_info in (data or {}).get("rounds", []) or []:
+        for choice in round_info.get("choices", []) or []:
+            quantity = choice.get("quantity") or 0
+            try:
+                quantity = int(quantity)
+            except (TypeError, ValueError):
+                quantity = 0
+            if quantity <= 0:
+                continue
+            children.append({
+                "code": str(choice.get("code") or ""),
+                "name": str(choice.get("name") or "").strip(),
+                "quantity": quantity,
+                "round": str(round_info.get("name") or ""),
+            })
+    return children
+
+
+def breakdown_combo(data: Dict, book: "NutritionBook",
+                    *, min_overlap: int = 3) -> ComboBreakdown:
+    """把一个套餐的默认组成拆成营养合计。"""
+    combo_code = str((data or {}).get("code") or "")
+    combo_name = str((data or {}).get("name") or "").strip()
+    totals = {"kj": 0.0, "kcal": 0.0, "protein": 0.0, "fat": 0.0,
+              "carbohydrate": 0.0, "sodium": 0.0, "calcium": 0.0}
+    matched: List[str] = []
+    missing: List[str] = []
+
+    for child in parse_meal_detail(data):
+        entry = book.match(str(child["name"]), min_overlap=min_overlap)
+        if entry is None:
+            missing.append(f"{child['name']}×{child['quantity']}")
+            continue
+        factor = float(child["quantity"])
+        matched.append(f"{entry.product_name}×{child['quantity']}")
+        totals["kj"] += (entry.energy_kj or 0.0) * factor
+        totals["kcal"] += (entry.energy_kcal or 0.0) * factor
+        totals["protein"] += (entry.protein or 0.0) * factor
+        totals["fat"] += (entry.fat or 0.0) * factor
+        totals["carbohydrate"] += (entry.carbohydrate or 0.0) * factor
+        totals["sodium"] += (entry.sodium or 0.0) * factor
+        totals["calcium"] += (entry.calcium or 0.0) * factor
+
+    nutrition = Nutrition(
+        product_name=combo_name or combo_code,
+        energy_kj=round(totals["kj"], 1) or None,
+        energy_kcal=round(totals["kcal"], 1) or None,
+        protein=round(totals["protein"], 1) or None,
+        fat=round(totals["fat"], 1) or None,
+        carbohydrate=round(totals["carbohydrate"], 1) or None,
+        sodium=round(totals["sodium"], 1) or None,
+        calcium=round(totals["calcium"], 1) or None,
+        description="由 query-meal-detail 默认组成累加得出",
+    )
+    return ComboBreakdown(combo_code=combo_code, combo_name=combo_name,
+                          nutrition=nutrition, matched=matched, missing=missing)

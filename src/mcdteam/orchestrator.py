@@ -23,6 +23,7 @@ from .solve.constraints import CateringRequirements, parse_requirements
 from .solve.planner import (
     CateringPlan,
     CateringPlanner,
+    enrich_plan_nutrition,
     fit_plan_to_budget,
     verify_plan_with_api,
 )
@@ -89,7 +90,7 @@ class Session:
                 city=requirements.city or self.config.city,
             )
             self._record("resolve_store", storeCode=store_code, source="explicit")
-            return context
+            return self._with_gm_service(context)
 
         if self.config.offline:
             raise MCPError(
@@ -111,6 +112,39 @@ class Session:
                      storeName=context.store_name, source="search")
         if self.progress:
             self.progress(f"已选门店:{context.store_name or context.store_code}")
+        return self._with_gm_service(context)
+
+    def _with_gm_service(self, context: StoreContext) -> StoreContext:
+        """企业团餐必须先取助餐服务码,否则 calculate-price 会被拒绝。
+
+        实测错误文案是「团餐助餐服务参数缺失」,而 `query-meals` 在没有它时
+        却仍能返回菜单,所以很容易在取价阶段才炸。这里在选店后立即补齐。
+        """
+        if context.be_type != 6 or context.gm_service_code:
+            return context
+        try:
+            services = self.client.meal_assistance(
+                context.store_code, order_type=context.order_type, be_type=6,
+                be_code=context.be_code)
+        except MCPError as exc:
+            self._say(f"助餐服务查询失败(团餐取价可能被拒):{exc}")
+            return context
+
+        chosen = ""
+        for service in services or []:
+            code = str(service.get("gmServiceCode") or "")
+            if not code or service.get("enable") is False:
+                continue
+            if service.get("selected"):
+                chosen = code
+                break
+            if not chosen:
+                chosen = code
+        if chosen:
+            self._record("query-meal-assistance", gmServiceCode=chosen)
+            if self.progress:
+                self.progress(f"团餐助餐服务 = {chosen}")
+            return context.with_gm_service(chosen)
         return context
 
     def _search_stores(self, requirements: CateringRequirements) -> List[Dict[str, Any]]:
@@ -169,6 +203,10 @@ class Session:
         if max_items:
             codes = codes[:max_items]
         self._record("query-meals", storeCode=context.store_code, codes=len(codes))
+
+        # 团餐在这之后再补一次助餐服务码:resolve_store 可能来自缓存/显式 storeCode
+        context = self._with_gm_service(context)
+        self.store_context = context
 
         price_map = (self._offline_price_map(context.store_code, context.order_type,
                                             context.be_type)
@@ -296,6 +334,9 @@ class Session:
              verify: bool = True) -> CateringPlan:
         context = self.store_context or self.resolve_store(requirements)
         self.store_context = context
+        # 把实际生效的场合回写到需求上,报告里的「场合」才会与真实调用一致
+        if context.mode is not requirements.mode:
+            requirements.mode = context.mode
         catalog = self.catalog or self.load_catalog(context)
         self.load_coupons(context)
         self.load_promotions(context)
@@ -309,11 +350,17 @@ class Session:
             self.progress("开始方案搜索")
         plan = planner.solve()
         plan.store_name = plan.store_name or context.store_name
-        if verify and not self.config.offline:
-            verify_plan_with_api(self.client, context, plan, progress=self.progress)
-            # 门店实价可能高于本地快照价,这里自动收敛回预算内
-            if plan.budget_cents and plan.payable_cents > plan.budget_cents:
-                plan = fit_plan_to_budget(self.client, context, plan, progress=self.progress)
+        if not self.config.offline:
+            if verify:
+                verify_plan_with_api(self.client, context, plan, progress=self.progress)
+                # 门店实价可能高于本地快照价,这里自动收敛回预算内
+                if plan.budget_cents and plan.payable_cents > plan.budget_cents:
+                    plan = fit_plan_to_budget(self.client, context, plan, progress=self.progress)
+            # 缺营养数据的含多件餐品(套餐/乐园餐)用 query-meal-detail 拆解组成累加。
+            # 这一步与价格核验独立:即使调用方关了核价,营养也应该尽量补全。
+            if self.nutrition_book is not None:
+                plan = enrich_plan_nutrition(
+                    self.client, context, plan, self.nutrition_book, progress=self.progress)
         self._record(
             "plan",
             payableYuan=plan.payable_yuan,

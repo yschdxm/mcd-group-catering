@@ -279,3 +279,153 @@ def test_report_renderers_do_not_crash():
     assert "麦麦团餐统筹官" in render_terminal(plan, requirements, color=False)
     assert "采购清单" in render_markdown(plan, requirements)
     assert "团餐已排好" in render_chat_card(plan, requirements)
+
+
+# --------------------------------------------------------------- 团餐专属逻辑
+def test_group_context_carries_gm_service_code():
+    context = StoreContext(store_code="1950564", mode=FulfillmentMode.GROUP, be_code="BE1")
+    assert "gmServiceCode" not in context.price_arguments()
+    with_service = context.with_gm_service("GMS001")
+    assert with_service.price_arguments()["gmServiceCode"] == "GMS001"
+    assert with_service.to_dict()["gmServiceCode"] == "GMS001"
+
+
+def test_combo_breakdown_sums_default_children():
+    """套餐营养应按默认选中的子项累加;未选中的(qty=0)不计入。"""
+    from mcdteam.data.nutrition import NutritionBook, breakdown_combo
+    book = NutritionBook.from_entries([
+        {"productName": "汉堡包", "energyKcal": 248, "protein": 13},
+        {"productName": "迷你薯条", "energyKcal": 106, "protein": 2},
+        {"productName": "纯牛奶", "energyKcal": 129, "protein": 7},
+        {"productName": "纯悦", "energyKcal": 0, "protein": 0},
+    ])
+    detail = {"code": "C1", "name": "汉堡开心乐园餐", "rounds": [
+        {"name": "汉堡", "choices": [{"code": "1", "name": "汉堡包", "quantity": 1}]},
+        {"name": "小食", "choices": [{"code": "2", "name": "迷你薯条", "quantity": 1}]},
+        {"name": "饮料", "choices": [
+            {"code": "3", "name": "纯牛奶", "quantity": 1},
+            {"code": "4", "name": "纯悦", "quantity": 0},   # 未选中,不能计入
+        ]},
+        {"name": "玩具", "choices": [{"code": "5", "name": "随机玩具1个", "quantity": 1}]},
+    ]}
+    result = breakdown_combo(detail, book)
+    assert result.nutrition.energy_kcal == 248 + 106 + 129
+    assert result.nutrition.protein == 13 + 2 + 7
+    assert any("纯悦" not in name for name in result.matched)
+    assert result.missing == ["随机玩具1个×1"]
+    assert result.complete is False
+
+
+def test_meal_detail_ignores_zero_quantity_choices():
+    from mcdteam.data.nutrition import parse_meal_detail
+    children = parse_meal_detail({"rounds": [
+        {"name": "r1", "choices": [{"code": "a", "name": "A", "quantity": 2},
+                                   {"code": "b", "name": "B", "quantity": 0}]},
+    ]})
+    assert len(children) == 1
+    assert children[0]["name"] == "A" and children[0]["quantity"] == 2
+
+
+def test_collect_price_map_raises_when_everything_fails():
+    """取价全失败必须显式报错,不能静默产出空方案。"""
+    from mcdteam.data.menu import collect_price_map
+    from mcdteam.mcp.errors import MCPBusinessError
+
+    class BrokenClient:
+        def calculate_price(self, *args, **kwargs):
+            raise MCPBusinessError("团餐助餐服务参数缺失", tool="calculate-price")
+
+    context = StoreContext(store_code="1950564", mode=FulfillmentMode.PICKUP)
+    with pytest.raises(MCPBusinessError):
+        collect_price_map(BrokenClient(), context, ["1100", "1440"])
+    # 允许调用方显式关闭该保护(例如只做菜单展示)
+    assert collect_price_map(BrokenClient(), context, ["1100"],
+                             raise_on_total_failure=False) == {}
+
+
+def test_orchestrator_warns_when_mains_lack_nutrition():
+    """主食全部无营养数据时必须显著告警,避免把严重偏低的数值当真。"""
+    class NoNutritionCatalog(MenuCatalog):
+        pass
+
+    catalog = MenuCatalog([
+        MenuItem(code="9001", name="神秘三件套", price=2000, role=Role.MAIN,
+                 nutrition=None, is_combo=True),
+        MenuItem(code="3000", name="中杯可乐", price=1000, role=Role.DRINK),
+    ], store_code="1")
+    requirements = CateringRequirements(headcount=2, budget_total=100, effort=8)
+    plan = CateringPlanner(catalog, requirements).solve()
+    assert any("都没有官方营养数据" in w for w in plan.warnings)
+
+
+def test_enrich_plan_nutrition_fills_combo(monkeypatch):
+    """套餐拆解应补上营养,并清掉「主食无营养」告警。"""
+    from mcdteam.data.nutrition import Nutrition, NutritionBook
+    from mcdteam.solve.planner import enrich_plan_nutrition
+
+    book = NutritionBook.from_entries([
+        {"productName": "汉堡包", "energyKcal": 248, "protein": 13},
+        {"productName": "迷你薯条", "energyKcal": 106, "protein": 2},
+    ])
+    catalog = MenuCatalog([
+        MenuItem(code="C1", name="汉堡开心乐园餐", price=2350, role=Role.MAIN, is_combo=True),
+        MenuItem(code="D1", name="中杯可乐", price=1000, role=Role.DRINK,
+                 nutrition=Nutrition(product_name="中杯可乐", energy_kcal=147)),
+    ], store_code="1")
+    plan = CateringPlanner(catalog, CateringRequirements(headcount=2, budget_total=100,
+                                                        effort=8)).solve()
+    assert plan.lines and all(line.item.nutrition is None for line in plan.lines
+                              if line.item.role is Role.MAIN)
+
+    class FakeResult:
+        success = True
+        data = {"code": "C1", "name": "汉堡开心乐园餐", "rounds": [
+            {"name": "主食", "choices": [{"code": "1", "name": "汉堡包", "quantity": 1}]},
+            {"name": "小食", "choices": [{"code": "2", "name": "迷你薯条", "quantity": 1}]},
+        ]}
+
+    class FakeClient:
+        def call_tool(self, name, arguments):
+            assert name == "query-meal-detail"
+            return FakeResult()
+
+    context = StoreContext(store_code="1", mode=FulfillmentMode.PICKUP)
+    enriched = enrich_plan_nutrition(FakeClient(), context, plan, book)
+    combo_line = [l for l in enriched.lines if l.item.code == "C1"]
+    if combo_line:
+        assert combo_line[0].item.nutrition is not None
+        assert combo_line[0].item.nutrition.energy_kcal == 354
+        assert combo_line[0].item.nutrition_derived is True
+        assert not any("都没有官方营养数据" in w for w in enriched.warnings)
+
+
+def test_enrich_plan_nutrition_skips_name_mismatch():
+    """名称不一致时拒绝拆解,并给出告警,不静默贴错营养。"""
+    from mcdteam.data.nutrition import NutritionBook
+    from mcdteam.solve.planner import enrich_plan_nutrition
+
+    book = NutritionBook.from_entries([{"productName": "汉堡包", "energyKcal": 248}])
+    catalog = MenuCatalog([
+        MenuItem(code="X1", name="牛肉堡单品精选", price=1400, role=Role.MAIN),
+        MenuItem(code="D1", name="中杯可乐", price=1000, role=Role.DRINK),
+    ], store_code="1")
+    plan = CateringPlanner(catalog, CateringRequirements(headcount=1, budget_total=100,
+                                                        effort=8)).solve()
+
+    class FakeResult:
+        success = True
+        data = {"code": "X1", "name": "大堡口福三件套", "rounds": [
+            {"name": "主食", "choices": [{"code": "1", "name": "汉堡包", "quantity": 1}]},
+            {"name": "小食", "choices": [{"code": "2", "name": "中薯条", "quantity": 1}]},
+        ]}
+
+    class FakeClient:
+        def call_tool(self, name, arguments):
+            return FakeResult()
+
+    context = StoreContext(store_code="1", mode=FulfillmentMode.PICKUP)
+    enriched = enrich_plan_nutrition(FakeClient(), context, plan, book)
+    target = [l for l in enriched.lines if l.item.code == "X1"]
+    if target:
+        assert target[0].item.nutrition is None
+    assert any("名称不一致" in w for w in enriched.warnings)

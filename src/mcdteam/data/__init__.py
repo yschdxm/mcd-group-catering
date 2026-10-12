@@ -11,7 +11,15 @@ from .menu import (
     portion_factor,
     spice_level,
 )
-from .nutrition import Nutrition, NutritionBook, normalize_name, parse_nutrition_table
+from .nutrition import (
+    ComboBreakdown,
+    Nutrition,
+    NutritionBook,
+    breakdown_combo,
+    normalize_name,
+    parse_meal_detail,
+    parse_nutrition_table,
+)
 
 __all__ = [
     "Coupon",
@@ -27,8 +35,11 @@ __all__ = [
     "collect_price_map",
     "portion_factor",
     "spice_level",
+    "ComboBreakdown",
     "Nutrition",
     "NutritionBook",
+    "breakdown_combo",
     "normalize_name",
+    "parse_meal_detail",
     "parse_nutrition_table",
 ]

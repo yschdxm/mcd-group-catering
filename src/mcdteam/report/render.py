@@ -101,6 +101,11 @@ def render_terminal(plan: CateringPlan, requirements: CateringRequirements, *,
             f"  {name_cell}{role_cell}"
             f"{line.item.price_yuan:>8.2f}{line.quantity:>5}{line.subtotal / 100:>10.2f}"
         )
+    derived = [line.item.name for line in plan.lines if line.item.nutrition_derived]
+    if derived:
+        out.append(p.dim("  ※ 以下套餐的营养由 query-meal-detail 的组成累加得出:"))
+        for name in derived:
+            out.append(p.dim(f"    ※ {name}"))
     out.append("  " + "·" * (_WIDTH - 4))
     out.append(f"  {'合计':<32}{plan.total_quantity:>5}{plan.subtotal_yuan:>10.2f}")
 
