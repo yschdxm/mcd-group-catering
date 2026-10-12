@@ -347,7 +347,7 @@ body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("ut
 | 离线可复现 | `fixtures/` 内置真实快照;`--offline` 全程不发网络请求 |
 | 资金安全 | **默认 dry-run**;真实下单需 `--pay` + 环境变量 `MCD_ALLOW_REAL_ORDER=1` 双闸门;提交前重新核价,金额超容差(¥1.00)默认拒绝;`create-order` 禁用快照兜底 |
 | 密钥安全 | Token 只从环境变量/命令行读取,报告与日志统一 `redact()` 脱敏 |
-| 可测试性 | 148 个单元测试;`transport` 可注入,便于 mock |
+| 可测试性 | 176 个单元测试;`transport` 可注入,便于 mock |
 
 ---
 

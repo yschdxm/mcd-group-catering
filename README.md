@@ -2,7 +2,7 @@
 
 [![Python](https://img.shields.io/badge/python-3.9%2B-blue)](https://www.python.org/)
 [![Dependencies](https://img.shields.io/badge/dependencies-none-brightgreen)](pyproject.toml)
-[![Tests](https://img.shields.io/badge/tests-148%20passed-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/tests-176%20passed-brightgreen)](tests/)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Agent Skill](https://img.shields.io/badge/Agent%20Skill-SKILL.md-ffc72c)](SKILL.md)
 [![MCP](https://img.shields.io/badge/MCP-mcd.mcd.cn-ffc72c)](MCP_INTEGRATION.md)
@@ -398,6 +398,7 @@ python -m mcdteam leaderboard            # 抓官方排行榜,看赛道拥挤度
 | `order cancel` | 取消单笔订单(有副作用,需确认) |
 | `order cleanup` | **列出并清理被遗忘的未支付订单**,默认只列出(dry-run) |
 | `order wait` | 轮询到「已支付/终态」,用于支付后自动确认(只读) |
+| `compare` | **多门店比价**:同一地址下哪家最便宜(只读) |
 | `leaderboard` | 抓取官方排行榜(只读,用于评估赛道拥挤度) |
 
 另有一个独立脚本用于**把演示快照换成你自己门店的数据**(快照只含门店编码、
@@ -423,6 +424,7 @@ python tools/regen_fixtures.py --store 1950564 --out fixtures
 | `--max-kcal` / `--min-protein` | 人均热量上限 / 人均蛋白质下限 |
 | `--effort <n>` | 搜索强度(重启次数),默认 48;预算紧张或人数多时建议提到 96~200 |
 | `--markdown` / `--json` | 导出提案 / 结构化结果 |
+| `--share` / `--share-format` | 支付卡片落盘;格式按扩展名推断(`.md` / `.json` / 纯文本) |
 | `--offline` | 全程使用仓库内置快照,不发网络请求 |
 | `-v` | 输出每一步的调用日志与耗时 |
 
@@ -504,9 +506,12 @@ mcd-group-catering/
 │   └── troubleshooting.md            故障排查步骤
 ├── fixtures/                     真实抓取的离线快照,保证一键可复现
 │   ├── nutrition_raw.txt             160 条官方营养数据
-│   ├── query-meals.1950564.json      门店 117 个在售编码与分类
-│   ├── price-map.store1950564.json   批量取价结果
-│   └── query-store-coupons.1950564.json
+│   ├── query-meals.<门店>.json        各门店在售编码与分类
+│   ├── price-map.store<门店>.<orderType>.<beType>.json
+│   │                                 批量取价结果(**带场景后缀**,到店价≠外送价)
+│   ├── query-store-coupons.<门店>.<orderType>.<beType>.json
+│   └── delivery-query-stores.<地址>.json
+│                                     可配送门店列表(离线也能解析店名与 beCode)
 ├── src/mcdteam/
 │   ├── mcp/                      MCP 客户端、错误分层、门店上下文
 │   │   ├── client.py                 限流 + 重试 + SSE/JSON 双解析 + 快照兜底
@@ -521,13 +526,14 @@ mcd-group-catering/
 │   │   └── planner.py                候选过滤 + 多起点局部搜索 + 核价收敛
 │   ├── report/render.py          终端卡片 / Markdown 提案 / 群聊短卡片
 │   ├── orchestrator.py           端到端流程编排
+│   ├── compare.py                多门店比价:同地址逐店求解并按实付排序
 │   ├── order.py                  下单编排:三重安全闸门 + 金额闸门 + 请求装配
 │   ├── probe.py                  MCP 能力探针(可复现的可用性报告)
 │   ├── contest.py                官方排行榜抓取(只读)
 │   └── cli.py                    命令行入口
 ├── tools/
 │   └── regen_fixtures.py         用你自己的门店重新生成离线快照
-├── tests/                        148 个单元测试
+├── tests/                        176 个单元测试
 └── examples/                     示例输出
 ```
 
@@ -541,7 +547,7 @@ python -m pytest -q
 
 ```text
 ...............................................................          [100%]
-148 passed
+176 passed
 ```
 
 覆盖范围:
@@ -552,6 +558,7 @@ python -m pytest -q
 | `test_menu.py` | 角色分类(含炸鸡/瓶装水/蘸酱/套餐等易错项)、份量推断、多编码合并、售罄标记 |
 | `test_solver.py` | 中文需求解析、配额推算、券与促销归一化、参数链规则、求解器预算/忌口/主食配额/可复现性、团餐 gmServiceCode、套餐营养拆解与名称不一致防护、取价失败报错、报告渲染 |
 | `test_skill_conformance.py` | Skill 形态合规:frontmatter 规范、触发词覆盖、参考文件存在性、脚本自举、必需文件齐全、声明的铁律与免责声明是否在册 |
+| `test_compare.py` | 多门店比价:按实付排序、单店失败不影响整体、歇业/缺 beCode/空菜单的判定、节省金额、渲染与序列化 |
 | `test_order.py` | 下单参数装配(场景参数链、takeWayCode/addressId/gmServiceCode)、安全闸门、金额闸门、**配送范围提前校验**、支付链接与支付卡片、订单状态渲染、**未支付订单清理**与**支付轮询**(含超时/取消/查询异常路径)。全部使用假客户端,零网络副作用 |
 | `test_agent_entrypoints.py` | 真的把脚本当子进程跑:stdout 是纯 JSON、失败返回结构化信封、`--json` 落盘可用 |
 

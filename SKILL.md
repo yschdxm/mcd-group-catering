@@ -252,7 +252,8 @@ python -m mcdteam order cancel --order-id <订单号> --reason-code 1   # 单笔
 | `python scripts/check.py` | 环境自检 | 无 |
 | `python scripts/plan.py "<需求>" --json plan.json` | 生成方案 | 只读 |
 | `python -m mcdteam menu --store <码>` | 看菜单与性价比 | 只读 |
-| `python -m mcdteam order preview "<需求>"` | 装配下单请求 | **无（dry-run）** |
+| `python -m mcdteam compare "<需求>"` | **多门店比价**(外送/团餐) | 只读 |
+| `python -m mcdteam order preview "<需求>"` | 装配下单请求 | **无(dry-run)** |
 | `python -m mcdteam order pay "<需求>" --pay` | 真实下单 | ⚠️ **产生真实订单** |
 | `python -m mcdteam order status --order-id <号>` | 查订单可读明细 | 只读 |
 | `python -m mcdteam order wait --order-id <号>` | 轮询到已支付/终态 | 只读 |
@@ -260,6 +261,33 @@ python -m mcdteam order cancel --order-id <订单号> --reason-code 1   # 单笔
 | `python -m mcdteam order cleanup` | 列出未支付订单 | 只读(dry-run) |
 | `python -m mcdteam order cleanup --cancel --yes` | 批量取消未支付订单 | ⚠️ 有副作用 |
 | `python -m mcdteam order cancel --order-id <号>` | 取消单笔订单 | ⚠️ 有副作用 |
+
+## 用不同门店比价（外送/团餐）
+
+同一配送地址通常有 **2~3 家可配送门店**，菜单与单价不同，团餐金额大，
+选错门店可能多花几十块。用户说"哪家便宜""换一家试试"时，**不要手工一家家试**：
+
+```bash
+python -m mcdteam compare "<需求>" --mode delivery        # 麦乐送
+python -m mcdteam compare "<需求>" --mode group           # 企业团餐
+```
+
+输出是一张按**实付金额**排序的比价表，并给出最省的门店编码：
+
+```
+🏪 多门店比价 · 同一地址,谁更便宜
+  排名   门店                      实付      人均   件数    状态
+  1    麦当劳无锡永乐路餐厅        285.50    35.69   20    预算内
+  2    麦当劳无锡云蝠大厦餐厅      293.00    36.62   21    预算内
+  3    麦当劳无锡五爱路餐厅        295.00    36.88   21    预算内
+  💡 最省:麦当劳无锡永乐路餐厅(1990041) ¥285.50
+     比最贵的 麦当劳无锡五爱路餐厅 省 ¥9.50
+```
+
+拿到最省门店后，用 `--store <该编码>` 去 `order preview` / `order pay` 下单。
+
+**注意**：比价每家门店都要拉菜单并逐批取价，耗时约等于「单店 × 门店数」，
+所以要用 `--max-stores` 限制（默认 4）。已有方案时**不要**为了比价重复跑很多次。
 
 ## 边界
 

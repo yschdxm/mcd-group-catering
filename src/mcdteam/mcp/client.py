@@ -270,16 +270,27 @@ class MCPClient:
 
     # -------------------------------------------------------------- 快照兜底
     def _snapshot_candidates(self, tool: str, arguments: Dict[str, Any]) -> Iterable[str]:
+        """按优先级列出可能的快照文件名。
+
+        * 门店级工具优先匹配带门店编码的文件;
+        * 价格与门店券还会额外尝试**带场景后缀**的文件
+          (``.<orderType>.<beType>.json``),因为同一门店的到店价与外送价不同,
+          只按门店编码命名会让两种场景互相覆盖。
+        """
         if not self.snapshot_dir:
             return []
         import os
 
         store = arguments.get("storeCode") or ""
-        names = [
-            f"{tool}.{store}.json",
-            f"{tool}.json",
-            f"{tool}.store{store}.json" if store else "",
-        ]
+        order_type = arguments.get("orderType")
+        be_type = arguments.get("beType")
+        names: List[str] = []
+        if store and order_type is not None and be_type is not None:
+            names.append(f"{tool}.{store}.{order_type}.{be_type}.json")
+        if store:
+            names.append(f"{tool}.{store}.json")
+        names.append(f"{tool}.json")
+
         paths = []
         for name in names:
             if not name:

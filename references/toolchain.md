@@ -99,6 +99,20 @@ cancel-order(orderId, cancelReasonCode)        → 有副作用
 实测 `takeWayList` 形如 `[{"code":"eat-in","title":"堂食"},{"code":"take-in-store","title":"外带"}]`,
 默认取第一项,可用 `--take-way` 指定。
 
+### 多门店比价
+
+```
+delivery-query-addresses()                → addressId
+   └─► delivery-query-stores(addressId, beType=2或6)  → 该地址全部可配送门店
+        └─► 对每家门店各跑一遍:
+             query-meals → calculate-price(批量) → query-store-coupons
+             → calculate-price(整单核价) → 按实付升序排序
+```
+
+同一地址实测有 **2~3 家**可配送门店,菜单与单价不同。比价的价值在于
+**不重复人工试错**;代价是接口调用量约为「单店 × 门店数」,所以要用
+`--max-stores` 限制。
+
 ### `create-order` 的返回(实测)
 
 ```

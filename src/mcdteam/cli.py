@@ -158,6 +158,9 @@ def _build_parser() -> argparse.ArgumentParser:
                               help="门店不在该地址配送范围时仍提交(通常会失败)")
             node.add_argument("--share", default="",
                               help="把可转发到群里的支付卡片写入该文件")
+            node.add_argument("--share-format", default="auto",
+                              choices=["auto", "text", "md", "json"],
+                              help="支付卡片格式;auto 按 --share 的扩展名推断")
 
     st = order_sub.add_parser("status", help="查询订单状态(只读)")
     st.add_argument("--order-id", required=True)
@@ -171,6 +174,29 @@ def _build_parser() -> argparse.ArgumentParser:
     cn.add_argument("--json", dest="json_path")
 
     order_sub.add_parser("list", help="查询历史订单(只读)")
+
+    cmp_parser = sub.add_parser("compare",
+                                help="多门店比价:同一地址下哪家最便宜(只读)")
+    cmp_parser.add_argument("text", nargs="*", help="自然语言需求")
+    cmp_parser.add_argument("--headcount", type=int)
+    cmp_parser.add_argument("--budget", type=float)
+    cmp_parser.add_argument("--per-person", type=float)
+    cmp_parser.add_argument("--mode", default="delivery",
+                            help="delivery(麦乐送)或 group(企业团餐),默认 delivery")
+    cmp_parser.add_argument("--at", dest="reserve_at")
+    cmp_parser.add_argument("--avoid", action="append", default=[])
+    cmp_parser.add_argument("--prefer", action="append", default=[])
+    cmp_parser.add_argument("--max-kcal", type=float)
+    cmp_parser.add_argument("--min-protein", type=float)
+    cmp_parser.add_argument("--effort", type=int, default=24,
+                            help="每家门店的搜索强度,默认 24(比价跑多家,调低控耗时)")
+    cmp_parser.add_argument("--max-stores", type=int, default=4,
+                            help="最多比价几家门店,默认 4")
+    cmp_parser.add_argument("--no-verify", action="store_true")
+    cmp_parser.add_argument("--no-color", action="store_true")
+    cmp_parser.add_argument("--json", dest="json_path")
+    cmp_parser.add_argument("--markdown", dest="md_path",
+                            help="把比价表导出为 Markdown")
 
     cl = order_sub.add_parser("cleanup", help="列出并清理被遗忘的未支付订单")
     cl.add_argument("--cancel", action="store_true",
@@ -218,6 +244,31 @@ def cmd_doctor(args: argparse.Namespace, config: AppConfig) -> int:
         size = f"{os.path.getsize(path) / 1024:.1f} KB" if exists else "缺失"
         print(f"     {'✔' if exists else '✘'} {label:<16} {name:<34} {size}")
         missing += 0 if exists else 1
+
+    # 统计仓库里实际抓到多少家门店的快照(比价与多场景离线演示都依赖它们)
+    try:
+        import glob
+        meal_files = glob.glob(os.path.join(config.fixture_dir, "query-meals.*.json"))
+        scoped_prices = glob.glob(os.path.join(
+            config.fixture_dir, "price-map.store*.*.*.json"))
+        address_files = glob.glob(os.path.join(
+            config.fixture_dir, "delivery-query-stores.*.json"))
+        store_codes = sorted({
+            os.path.basename(path).split(".")[1]
+            for path in meal_files
+            if len(os.path.basename(path).split(".")) >= 3
+        })
+        if store_codes:
+            print(f"     ℹ 已抓取门店快照 {len(store_codes)} 家:"
+                  f"{', '.join(store_codes)}")
+        if scoped_prices:
+            print(f"     ℹ 带场景后缀的价格快照 {len(scoped_prices)} 个"
+                  "(到店价与外送价不会互相覆盖)")
+        if address_files:
+            print(f"     ℹ 可配送门店列表快照 {len(address_files)} 份"
+                  "(离线也能解析店名与 beCode)")
+    except OSError:
+        pass
 
     # 营养快照可解析性
     try:
@@ -478,6 +529,21 @@ def _plan_and_session(args: argparse.Namespace, config: AppConfig):
     return session, plan, requirements
 
 
+def _resolve_share_format(path: str, requested: str = "auto") -> str:
+    """决定支付卡片的输出格式。
+
+    ``auto`` 时按文件扩展名推断:``.md`` → markdown,``.json`` → json,其余按纯文本。
+    """
+    if requested and requested != "auto":
+        return requested
+    lowered = (path or "").lower()
+    if lowered.endswith(".md") or lowered.endswith(".markdown"):
+        return "md"
+    if lowered.endswith(".json"):
+        return "json"
+    return "text"
+
+
 def _cmd_order_cleanup(args: argparse.Namespace, config: AppConfig) -> int:
     """列出并（可选）取消被遗忘的未支付订单。
 
@@ -712,17 +778,21 @@ def cmd_order(args: argparse.Namespace, config: AppConfig) -> int:
             print("  💳 未返回支付链接,请打开麦当劳 APP 在「我的订单」中支付")
         if draft.pickup_code:
             print(f"  🔢 取餐码:{draft.pickup_code}")
+        reminder = draft.pickup_reminder()
+        if reminder:
+            print(f"  ℹ {reminder}")
         print()
-        print("  📤 可转发到群里的支付卡片:")
+        fmt = _resolve_share_format(args.share, args.share_format)
+        print(f"  📤 可转发到群里的支付卡片({fmt}):")
         print("─" * 68)
-        for line in draft.payment_card().splitlines():
+        for line in draft.render_card(fmt).splitlines():
             print(f"  {line}")
         print("─" * 68)
         if getattr(args, "share", ""):
             try:
                 with open(args.share, "w", encoding="utf-8") as handle:
-                    handle.write(draft.payment_card() + "\n")
-                print(f"  ✔ 支付卡片已写入 {args.share}", file=sys.stderr)
+                    handle.write(draft.render_card(fmt) + "\n")
+                print(f"  ✔ 支付卡片({fmt})已写入 {args.share}", file=sys.stderr)
             except OSError as exc:
                 print(f"  ⚠ 无法写入 {args.share}:{exc}", file=sys.stderr)
         print(f"  查询状态:order status --order-id {draft.order_id}")
@@ -844,6 +914,62 @@ def cmd_tools(args: argparse.Namespace, config: AppConfig) -> int:
     return 0
 
 
+# ------------------------------------------------------------------- 比价
+def cmd_compare(args: argparse.Namespace, config: AppConfig) -> int:
+    """多门店比价:同一地址下对每家可配送门店各求解一次,按实付排序。"""
+    from .compare import (
+        DEFAULT_COMPARE_EFFORT,
+        compare_stores,
+        render_comparison,
+        render_comparison_markdown,
+    )
+
+    if not config.has_token:
+        print(f"✘ 比价需要麦当劳 MCP Token(环境变量 {TOKEN_ENV})", file=sys.stderr)
+        return 2
+
+    text = " ".join(args.text or [])
+    overrides = _plan_overrides(args)
+    overrides.pop("store_code", None)          # 门店由比价逻辑决定
+    requirements = build_requirements(text, **overrides)
+
+    session = Session(config, progress=_emit if config.verbose else None)
+    try:
+        comparison = compare_stores(
+            session, requirements,
+            max_stores=args.max_stores,
+            effort=args.effort or DEFAULT_COMPARE_EFFORT,
+            verify=not args.no_verify,
+            progress=_emit,
+        )
+    except ValueError as exc:
+        print(f"✘ {exc}", file=sys.stderr)
+        return 2
+    except MCPError as exc:
+        print(f"✘ 比价失败:{exc}", file=sys.stderr)
+        return 3
+
+    print(render_comparison(comparison, color=not args.no_color))
+
+    best = comparison.best
+    if best and best.plan:
+        print(f"  ▶ 想用最省的那家下单:")
+        print(f"    python -m mcdteam --store {best.store_code} order preview "
+              f"\"{text or '需求'}\" --mode {args.mode}")
+        print()
+
+    if args.md_path:
+        with open(args.md_path, "w", encoding="utf-8") as handle:
+            handle.write(render_comparison_markdown(comparison))
+        print(f"  ✔ Markdown 已写入 {args.md_path}", file=sys.stderr)
+    if args.json_path:
+        with open(args.json_path, "w", encoding="utf-8") as handle:
+            json.dump(comparison.to_dict(), handle, ensure_ascii=False,
+                      indent=2, default=str)
+        print(f"  ✔ JSON 已写入 {args.json_path}", file=sys.stderr)
+    return 0 if best else 1
+
+
 # ----------------------------------------------------------------- leaderboard
 def cmd_scan(args: argparse.Namespace, config: AppConfig) -> int:
     from .secret_scan import main as scan_main
@@ -928,6 +1054,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         "plan": cmd_plan,
         "agent-plan": cmd_agent_plan,
         "order": cmd_order,
+        "compare": cmd_compare,
         "menu": cmd_menu,
         "tools": cmd_tools,
         "probe": cmd_probe,

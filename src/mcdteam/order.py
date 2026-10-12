@@ -226,6 +226,73 @@ class OrderDraft:
             lines.append(f"🔢 取餐码 {self.pickup_code}")
         return "\n".join(lines)
 
+    def payment_card_markdown(self) -> str:
+        """支付卡片的 Markdown 版本(适合粘进飞书/Notion/邮件)。"""
+        if not self.submitted:
+            return ""
+        name = self.store_context.store_name or self.store_context.store_code
+        lines = [
+            f"## 🍟 麦当劳团餐已下单 · {name}",
+            "",
+            f"| 项目 | 内容 |",
+            f"|---|---|",
+            f"| 取餐方式 | {self.store_context.mode.label} |",
+        ]
+        if self.store_context.reservation_date:
+            lines.append(f"| 预约时间 | {self.store_context.reservation_date} |")
+        lines.append(f"| 应付金额 | **¥{self.quoted_cents / 100:,.2f}** |")
+        lines.append(f"| 订单号 | `{self.order_id}` |")
+        if self.expire_pay_time:
+            lines.append(f"| 支付截止 | {self.expire_pay_time} |")
+        if self.pickup_code:
+            lines.append(f"| 取餐码 | `{self.pickup_code}` |")
+        lines.append("")
+        if self.payment_url:
+            lines.append(f"👉 **[点击支付]({self.payment_url})**")
+            lines.append("")
+            lines.append(f"支付链接:{self.payment_url}")
+        else:
+            lines.append("请在麦当劳 APP 的「我的订单」中完成支付。")
+        return "\n".join(lines)
+
+    def render_card(self, fmt: str = "text") -> str:
+        """按格式渲染支付卡片:``text``(默认)/ ``md`` / ``json``。"""
+        normalized = (fmt or "text").strip().lower()
+        if normalized in ("md", "markdown"):
+            return self.payment_card_markdown()
+        if normalized in ("json", "application/json"):
+            import json as _json
+
+            return _json.dumps({
+                "orderId": self.order_id,
+                "payId": self.pay_id or None,
+                "paymentUrl": self.payment_url or None,
+                "orderStatus": self.order_status or None,
+                "expirePayTime": self.expire_pay_time or None,
+                "pickupCode": self.pickup_code or None,
+                "amountYuan": round(self.quoted_cents / 100.0, 2),
+                "storeName": self.store_context.store_name or None,
+                "storeCode": self.store_context.store_code,
+                "storeAddress": self.order_detail.get("storeAddress") or None,
+                "mode": self.store_context.mode.label,
+                "reservationDate": self.store_context.reservation_date or None,
+                "pickupReminder": self.pickup_reminder(),
+            }, ensure_ascii=False, indent=2)
+        return self.payment_card()
+
+    def pickup_reminder(self) -> str:
+        """给用户的一句取餐提醒。
+
+        取餐码只有在订单进入「配餐中/待取餐」之后才有值,所以未支付或刚下单时
+        会返回空串 —— 这时**不要**编一个码出来。
+        """
+        if not self.submitted and not self.pickup_code:
+            return ""
+        if self.pickup_code:
+            store = self.store_context.store_name or self.store_context.store_code
+            return (f"取餐码 {self.pickup_code},到「{store}」出示手机号或取餐码取餐。")
+        return "订单已创建;完成支付后取餐码会出现在订单详情里。"
+
 
 def pick_take_way(take_way_list: Sequence[Dict[str, Any]],
                   preferred: str = "") -> tuple:

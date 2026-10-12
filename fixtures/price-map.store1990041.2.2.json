@@ -1,0 +1,628 @@
+{
+  "storeCode": "1990041",
+  "orderType": 2,
+  "beType": 2,
+  "capturedAt": "2026-10-12 18:45:17",
+  "products": [
+    {
+      "productCode": "501205",
+      "productName": "中薯条",
+      "price": 1550
+    },
+    {
+      "productCode": "507368",
+      "productName": "麦咖啡™热美式中杯",
+      "price": 1190
+    },
+    {
+      "productCode": "510478",
+      "productName": "热燕麦奶铁中杯",
+      "price": 2300
+    },
+    {
+      "productCode": "510488",
+      "productName": "热燕麦奶中杯",
+      "price": 1050
+    },
+    {
+      "productCode": "515955",
+      "productName": "冰浓浓燕麦黑巧中杯",
+      "price": 1590
+    },
+    {
+      "productCode": "520688",
+      "productName": "大杯鲜萃咖啡",
+      "price": 1300
+    },
+    {
+      "productCode": "521147",
+      "productName": "Hold不住鸡排堡（椒盐风味）",
+      "price": 2600
+    },
+    {
+      "productCode": "521156",
+      "productName": "那么大鸡排（椒盐风味）",
+      "price": 1550
+    },
+    {
+      "productCode": "521316",
+      "productName": "高达吉士双牛堡",
+      "price": 2600
+    },
+    {
+      "productCode": "521327",
+      "productName": "鲜萃冰咖",
+      "price": 1300
+    },
+    {
+      "productCode": "521633",
+      "productName": "星云海盐焦糖风味麦旋风",
+      "price": 1700
+    },
+    {
+      "productCode": "521750",
+      "productName": "泷盐星星麦旋风",
+      "price": 1700
+    },
+    {
+      "productCode": "521797",
+      "productName": "北美招牌牧场酱",
+      "price": 300
+    },
+    {
+      "productCode": "521816",
+      "productName": "酥酥多笋卷",
+      "price": 2350
+    },
+    {
+      "productCode": "521817",
+      "productName": "【美汁源】“多汁柠柠”",
+      "price": 1300
+    },
+    {
+      "productCode": "521823",
+      "productName": "脆皮鸡柳3根",
+      "price": 1550
+    },
+    {
+      "productCode": "521836",
+      "productName": "柠檬脆脆麦旋风",
+      "price": 850
+    },
+    {
+      "productCode": "521901",
+      "productName": "月下相思扭扭薯",
+      "price": 1700
+    },
+    {
+      "productCode": "521914",
+      "productName": "“葱不求人“按摩捶痒痒挠",
+      "price": 1490
+    },
+    {
+      "productCode": "521917",
+      "productName": "泷愿成真麦旋风——大米风味",
+      "price": 1700
+    },
+    {
+      "productCode": "521950",
+      "productName": "蓝莓爆爆珠麦旋风",
+      "price": 1700
+    },
+    {
+      "productCode": "521952",
+      "productName": "龙焰鸡腿堡",
+      "price": 2700
+    },
+    {
+      "productCode": "521953",
+      "productName": "龙焰芝士棒鸡腿堡",
+      "price": 3000
+    },
+    {
+      "productCode": "521966",
+      "productName": "韩式烟熏芝士风味酱",
+      "price": 300
+    },
+    {
+      "productCode": "521986",
+      "productName": "马苏里拉拉丝芝士条",
+      "price": 1190
+    },
+    {
+      "productCode": "900138",
+      "productName": "不素之霸双层牛堡",
+      "price": 2900
+    },
+    {
+      "productCode": "901000",
+      "productName": "汉堡包",
+      "price": 1500
+    },
+    {
+      "productCode": "901010",
+      "productName": "吉士汉堡包",
+      "price": 1650
+    },
+    {
+      "productCode": "901027",
+      "productName": "100% 苹果汁(盒装)",
+      "price": 1300
+    },
+    {
+      "productCode": "901100",
+      "productName": "巨无霸",
+      "price": 2900
+    },
+    {
+      "productCode": "901106",
+      "productName": "培根蔬萃双层牛堡",
+      "price": 2700
+    },
+    {
+      "productCode": "901120",
+      "productName": "双层吉士汉堡",
+      "price": 2500
+    },
+    {
+      "productCode": "901401",
+      "productName": "麦乐鸡5块",
+      "price": 1500
+    },
+    {
+      "productCode": "901406",
+      "productName": "板烧鸡腿堡",
+      "price": 2650
+    },
+    {
+      "productCode": "901440",
+      "productName": "麦辣鸡腿汉堡",
+      "price": 2550
+    },
+    {
+      "productCode": "901450",
+      "productName": "麦香鸡",
+      "price": 1800
+    },
+    {
+      "productCode": "901600",
+      "productName": "麦香鱼",
+      "price": 2400
+    },
+    {
+      "productCode": "901700",
+      "productName": "麦辣鸡翅2块",
+      "price": 1600
+    },
+    {
+      "productCode": "902060",
+      "productName": "培根安格斯厚牛堡",
+      "price": 3700
+    },
+    {
+      "productCode": "902061",
+      "productName": "芝士安格斯厚牛堡",
+      "price": 3400
+    },
+    {
+      "productCode": "902372",
+      "productName": "奥利奥麦旋风",
+      "price": 1600
+    },
+    {
+      "productCode": "902373",
+      "productName": "草莓麦旋风",
+      "price": 1600
+    },
+    {
+      "productCode": "902374",
+      "productName": "朱古力新地",
+      "price": 1350
+    },
+    {
+      "productCode": "902375",
+      "productName": "草莓新地",
+      "price": 1350
+    },
+    {
+      "productCode": "903050",
+      "productName": "可口可乐中杯",
+      "price": 1100
+    },
+    {
+      "productCode": "903060",
+      "productName": "雪碧中杯",
+      "price": 1100
+    },
+    {
+      "productCode": "903071",
+      "productName": "无糖可口可乐中杯",
+      "price": 1100
+    },
+    {
+      "productCode": "903418",
+      "productName": "阳光柠檬红茶中杯",
+      "price": 1100
+    },
+    {
+      "productCode": "903495",
+      "productName": "怡泉+C中杯",
+      "price": 1250
+    },
+    {
+      "productCode": "903505",
+      "productName": "锡兰红茶",
+      "price": 1200
+    },
+    {
+      "productCode": "903757",
+      "productName": "纯悦",
+      "price": 800
+    },
+    {
+      "productCode": "904105",
+      "productName": "菠萝派",
+      "price": 900
+    },
+    {
+      "productCode": "904106",
+      "productName": "香芋派",
+      "price": 900
+    },
+    {
+      "productCode": "904437",
+      "productName": "玉米杯(小)",
+      "price": 1450
+    },
+    {
+      "productCode": "906102",
+      "productName": "苹果片",
+      "price": 750
+    },
+    {
+      "productCode": "906352",
+      "productName": "【美汁源】“黄金橙橙”",
+      "price": 1400
+    },
+    {
+      "productCode": "920112",
+      "productName": "双层脆鸡堡",
+      "price": 2600
+    },
+    {
+      "productCode": "920123",
+      "productName": "薄皮焦香V翅",
+      "price": 1700
+    },
+    {
+      "productCode": "920159",
+      "productName": "培根芝士双牛堡",
+      "price": 2700
+    },
+    {
+      "productCode": "920174",
+      "productName": "打包服务费",
+      "price": 760
+    },
+    {
+      "productCode": "9900000590",
+      "productName": "堡堡随心拼(7件任选)(麦金卡免配) ",
+      "price": 7900
+    },
+    {
+      "productCode": "9900001186",
+      "productName": "培根安格斯厚牛堡中套餐",
+      "price": 5250
+    },
+    {
+      "productCode": "9900002925",
+      "productName": "超级翅桶",
+      "price": 11000
+    },
+    {
+      "productCode": "9900002995",
+      "productName": "麦辣鸡腿汉堡中套餐",
+      "price": 4100
+    },
+    {
+      "productCode": "9900002996",
+      "productName": "板烧鸡腿堡中套餐",
+      "price": 4200
+    },
+    {
+      "productCode": "9900002999",
+      "productName": "吉士汉堡中套餐",
+      "price": 3200
+    },
+    {
+      "productCode": "9900003000",
+      "productName": "双层吉士汉堡中套餐",
+      "price": 4050
+    },
+    {
+      "productCode": "9900003001",
+      "productName": "巨无霸中套餐",
+      "price": 4450
+    },
+    {
+      "productCode": "9900003002",
+      "productName": "培根蔬萃双层牛堡中套餐",
+      "price": 4250
+    },
+    {
+      "productCode": "9900003003",
+      "productName": "麦辣鸡翅中套餐",
+      "price": 4450
+    },
+    {
+      "productCode": "9900003004",
+      "productName": "麦乐鸡(5块)中套餐",
+      "price": 3050
+    },
+    {
+      "productCode": "9900003015",
+      "productName": "芝士安格斯厚牛堡中套餐",
+      "price": 4950
+    },
+    {
+      "productCode": "9900003021",
+      "productName": "麦麦脆汁鸡1块",
+      "price": 1600
+    },
+    {
+      "productCode": "9900003023",
+      "productName": "酥酥多笋卷中套餐",
+      "price": 3900
+    },
+    {
+      "productCode": "9900003037",
+      "productName": "不素之霸双层牛堡中套餐",
+      "price": 4450
+    },
+    {
+      "productCode": "9900003039",
+      "productName": "双层深海鳕鱼堡中套餐",
+      "price": 4200
+    },
+    {
+      "productCode": "9900003041",
+      "productName": "麦香鸡中套餐",
+      "price": 3350
+    },
+    {
+      "productCode": "9900003102",
+      "productName": "麦香鱼中套餐",
+      "price": 3950
+    },
+    {
+      "productCode": "9900003589",
+      "productName": "双层深海鳕鱼堡",
+      "price": 2650
+    },
+    {
+      "productCode": "9900003936",
+      "productName": "培根蔬萃双层牛堡薯翅四件套",
+      "price": 5550
+    },
+    {
+      "productCode": "9900003937",
+      "productName": "不素之霸薯翅四件套",
+      "price": 5800
+    },
+    {
+      "productCode": "9900003939",
+      "productName": "麦香鱼薯翅四件套",
+      "price": 5400
+    },
+    {
+      "productCode": "9900003949",
+      "productName": "双层鳕鱼堡四件套",
+      "price": 5500
+    },
+    {
+      "productCode": "9900007761",
+      "productName": "薄皮V翅混拼十翅可乐餐",
+      "price": 5990
+    },
+    {
+      "productCode": "9900007762",
+      "productName": "精选单人餐四件套",
+      "price": 4590
+    },
+    {
+      "productCode": "9900009251",
+      "productName": "牛气满满套餐",
+      "price": 4150
+    },
+    {
+      "productCode": "9900009255",
+      "productName": "“苹板”支撑Pro套餐",
+      "price": 4650
+    },
+    {
+      "productCode": "9900009882",
+      "productName": "四拼小食餐",
+      "price": 3990
+    },
+    {
+      "productCode": "9900010341",
+      "productName": "鸡肉汉堡随心选单人餐（麦金卡免配）",
+      "price": 4950
+    },
+    {
+      "productCode": "9900010670",
+      "productName": "大堡口福四件套（Hold不住鸡排堡）",
+      "price": 3590
+    },
+    {
+      "productCode": "9900011071",
+      "productName": "全明星双人分享餐8件套(多款主食任选)",
+      "price": 11550
+    },
+    {
+      "productCode": "9900011122",
+      "productName": "“苹”水相“鱼”套餐",
+      "price": 4300
+    },
+    {
+      "productCode": "9900011124",
+      "productName": "“辣”么快乐套餐",
+      "price": 2850
+    },
+    {
+      "productCode": "9900011129",
+      "productName": "“堡”你欢乐套餐",
+      "price": 3590
+    },
+    {
+      "productCode": "9900011822",
+      "productName": "经典小食2件(麦金卡专享)",
+      "price": 3000
+    },
+    {
+      "productCode": "9900012807",
+      "productName": "鱼牛汉堡随心选单人餐（麦金卡免配）",
+      "price": 5850
+    },
+    {
+      "productCode": "9900012810",
+      "productName": "经典安格斯单人餐（麦金卡免配）",
+      "price": 6650
+    },
+    {
+      "productCode": "9900012938",
+      "productName": "快乐吃鸡双人餐",
+      "price": 5590
+    },
+    {
+      "productCode": "9900012940",
+      "productName": "鸡牛堡堡双人餐",
+      "price": 6490
+    },
+    {
+      "productCode": "9900012945",
+      "productName": "加牛欢享四人餐",
+      "price": 11600
+    },
+    {
+      "productCode": "9900012999",
+      "productName": "大吉大利吃鸡双人餐",
+      "price": 7390
+    },
+    {
+      "productCode": "9900013002",
+      "productName": "畅享吃鸡三人餐",
+      "price": 8600
+    },
+    {
+      "productCode": "9900013004",
+      "productName": "合家欢聚鸡牛三人餐",
+      "price": 9600
+    },
+    {
+      "productCode": "9900013006",
+      "productName": "吃鸡盛宴四人餐",
+      "price": 10700
+    },
+    {
+      "productCode": "9900013195",
+      "productName": "培根安格斯厚牛堡四件套",
+      "price": 6200
+    },
+    {
+      "productCode": "9900013199",
+      "productName": "芝士安格斯厚牛堡四件套",
+      "price": 5950
+    },
+    {
+      "productCode": "9900014478",
+      "productName": "麦咖啡冰爽一夏",
+      "price": 990
+    },
+    {
+      "productCode": "9900015658",
+      "productName": "大堡口福三件套（双层脆鸡堡）",
+      "price": 2890
+    },
+    {
+      "productCode": "9900015659",
+      "productName": "大堡口福三件套（Hold不住鸡排堡）",
+      "price": 3190
+    },
+    {
+      "productCode": "9900015726",
+      "productName": "韩式甜辣酱鸡块8块",
+      "price": 1990
+    },
+    {
+      "productCode": "9900015935",
+      "productName": "泷泷星愿四件套",
+      "price": 3990
+    },
+    {
+      "productCode": "9900016056",
+      "productName": "麦乐鸡开心乐园餐",
+      "price": 2650
+    },
+    {
+      "productCode": "9900016057",
+      "productName": "汉堡开心乐园餐",
+      "price": 2500
+    },
+    {
+      "productCode": "9900016058",
+      "productName": "鱼排堡开心乐园餐",
+      "price": 2550
+    },
+    {
+      "productCode": "9900016082",
+      "productName": "心形薯饼5块",
+      "price": 1650
+    },
+    {
+      "productCode": "9900016490",
+      "productName": "龙焰鸡腿堡四件套",
+      "price": 3690
+    },
+    {
+      "productCode": "9900016503",
+      "productName": "龙焰芝士棒鸡腿堡四件套",
+      "price": 3990
+    },
+    {
+      "productCode": "9900016507",
+      "productName": "龙焰鸡腿堡单人餐（麦金卡免配）",
+      "price": 6550
+    },
+    {
+      "productCode": "9900016508",
+      "productName": "龙焰芝士棒鸡腿堡单人餐（麦金卡免配）",
+      "price": 6850
+    },
+    {
+      "productCode": "9900016510",
+      "productName": "“我就喜欢”鸡薯双全盒",
+      "price": 1590
+    },
+    {
+      "productCode": "9900016511",
+      "productName": "蘸蘸炸鸡",
+      "price": 1290
+    },
+    {
+      "productCode": "9900016513",
+      "productName": "蘸酱韩式甜辣酱鸡块",
+      "price": 1290
+    },
+    {
+      "productCode": "9900016514",
+      "productName": "蘸酱麦麦脆汁鸡",
+      "price": 1290
+    },
+    {
+      "productCode": "9900016515",
+      "productName": "蘸酱脆皮鸡柳",
+      "price": 1290
+    }
+  ]
+}

@@ -88,6 +88,18 @@ def main(argv=None) -> int:
         ok = os.path.exists(path)
         size = f"{os.path.getsize(path) / 1024:.1f} KB" if ok else "缺失(仅影响 --offline)"
         print(_line(ok, label, size))
+    try:
+        import glob
+        store_codes = sorted({
+            os.path.basename(path).split(".")[1]
+            for path in glob.glob(os.path.join(config.fixture_dir, "query-meals.*.json"))
+            if len(os.path.basename(path).split(".")) >= 3
+        })
+        if store_codes:
+            print(f"     ℹ 已抓取门店快照 {len(store_codes)} 家:"
+                  f"{', '.join(store_codes)}")
+    except OSError:
+        pass
     # 快照缺失不阻塞在线使用,只提示
     if not os.path.exists(os.path.join(config.fixture_dir, "nutrition_raw.txt")):
         print("     ⚠ 营养快照缺失:营养参考会为空,但不影响价格与清单")

@@ -79,12 +79,24 @@ class Session:
         if store_code:
             if mode.requires_be_code and not be_code:
                 if self.config.offline:
-                    be_code = "offline"
-                    self._record("resolve_store", note="离线模式使用占位 beCode")
+                    # 离线:从门店列表快照里取 beCode,取不到就用占位值
+                    for record in self._offline_store_records(mode.be_type):
+                        if str(record.get("storeCode")) == str(store_code):
+                            be_code = str(record.get("beCode") or "")
+                            break
+                    if not be_code:
+                        be_code = "offline"
+                        self._record("resolve_store",
+                                     note="离线快照中没有该门店的 beCode,使用占位值")
                 else:
                     be_code = self._lookup_be_code(store_code, mode, requirements)
             store_name = ""
-            if not self.config.offline:
+            if self.config.offline:
+                for record in self._offline_store_records(mode.be_type):
+                    if str(record.get("storeCode")) == str(store_code):
+                        store_name = str(record.get("storeName") or "")
+                        break
+            else:
                 # 直接指定 --store 时不会走门店列表接口,尽力补个店名让报告更好读。
                 # 查不到也不影响主流程。
                 store_name = self.client.store_name(store_code)
@@ -190,6 +202,39 @@ class Session:
             f"{mode.label} 场景需要 beCode,但未能从门店接口获取;"
             "请用 --be-code 显式指定", tool="query-nearby-stores")
 
+    def _offline_store_records(self, be_type: int) -> List[Dict[str, Any]]:
+        """离线模式下从 ``delivery-query-stores.<addressId>.json`` 读门店列表。
+
+        快照结构::
+
+            {"success": true, "data": {"addressId": "...",
+                                       "byBeType": {"2": [...], "6": [...]}}}
+
+        用途:让 ``--offline`` 也能解析出门店名与 ``beCode``
+        —— 否则离线演示只能看到门店编码,而且外送/团餐场景会因为缺 ``beCode``
+        直接报错。
+        """
+        address_id = (self.config.address_id
+                      or (self.store_context.address_id if self.store_context else ""))
+        if not address_id:
+            return []
+        path = os.path.join(self.config.fixture_dir,
+                            f"delivery-query-stores.{address_id}.json")
+        if not os.path.exists(path):
+            return []
+        try:
+            with open(path, "r", encoding="utf-8-sig") as handle:
+                payload = json.load(handle)
+        except (OSError, json.JSONDecodeError):
+            return []
+        data = payload.get("data") if isinstance(payload, dict) else None
+        if not isinstance(data, dict):
+            return []
+        by_type = data.get("byBeType") or {}
+        records = by_type.get(str(be_type)) or by_type.get(be_type) or []
+        self.client.snapshot_hits.append(f"delivery-query-stores <- {path}")
+        return [r for r in records if isinstance(r, dict)]
+
     # ---------------------------------------------------------------- 菜单层
     def load_catalog(self, context: StoreContext, *, max_items: int = 0) -> MenuCatalog:
         """取菜单 → 批量取价 → 挂营养。"""
@@ -240,13 +285,20 @@ class Session:
 
     def _offline_price_map(self, store_code: str, order_type: int = 1,
                            be_type: int = 1) -> Dict[str, Dict[str, Any]]:
-        """离线模式下从 ``price-map.store{code}.json`` 读取价格快照。
+        """离线模式下读取价格快照。
 
-        快照里记录了抓取时的 ``orderType``/``beType``;若与本次请求不一致,
-        会在调用方的 ``warnings`` 里体现(到店价与外送价本来就不同)。
+        **文件名优先带场景后缀**:``price-map.store<code>.<orderType>.<beType>.json``。
+        原因:同一门店的到店价与外送价不同(实测麦乐送整体高于到店),
+        只按门店编码命名会让两种场景互相覆盖,导致离线演示给出错误金额。
+        找不到带后缀的文件时,回落到只带门店编码的旧命名。
         """
-        path = os.path.join(self.config.fixture_dir, f"price-map.store{store_code}.json")
-        if not os.path.exists(path):
+        candidates = [
+            os.path.join(self.config.fixture_dir,
+                         f"price-map.store{store_code}.{order_type}.{be_type}.json"),
+            os.path.join(self.config.fixture_dir, f"price-map.store{store_code}.json"),
+        ]
+        path = next((p for p in candidates if os.path.exists(p)), "")
+        if not path:
             return {}
         with open(path, "r", encoding="utf-8-sig") as handle:
             payload = json.load(handle)
@@ -347,6 +399,28 @@ class Session:
         if context.mode is not requirements.mode:
             requirements.mode = context.mode
         catalog = self.catalog or self.load_catalog(context)
+        return self.plan_for(context, catalog, requirements, verify=verify)
+
+    def load_catalog_for(self, context: StoreContext, *,
+                         max_items: int = 0) -> MenuCatalog:
+        """为任意门店加载菜单,并**把结果留在 session 上**。
+
+        与 :meth:`load_catalog` 相同,但会同时更新 ``self.catalog`` /
+        ``self.store_context``。多门店比价需要对每家门店各加载一次,用它。
+        """
+        catalog = self.load_catalog(context, max_items=max_items)
+        self.catalog = catalog
+        self.store_context = context
+        return catalog
+
+    def plan_for(self, context: StoreContext, catalog: MenuCatalog,
+                 requirements: CateringRequirements, *,
+                 verify: bool = True) -> CateringPlan:
+        """在**已给定的门店上下文与菜单**上求解并核价。
+
+        把「求解 + 核价 + 收敛 + 营养补全」这段与门店解析解耦,目的是让
+        多门店比价可以复用同一段逻辑 —— 比价不应该复制一份求解流程。
+        """
         self.load_coupons(context)
         self.load_promotions(context)
 
@@ -372,6 +446,7 @@ class Session:
                     self.client, context, plan, self.nutrition_book, progress=self.progress)
         self._record(
             "plan",
+            storeCode=context.store_code,
             payableYuan=plan.payable_yuan,
             items=plan.total_quantity,
             underBudget=plan.under_budget,

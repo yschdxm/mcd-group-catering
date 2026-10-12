@@ -455,6 +455,102 @@ def test_describe_order_marks_cancelled():
     assert "不产生任何消费" in text
 
 
+# ------------------------------------------------- 支付卡片的多格式与取餐码
+def _submitted_draft():
+    draft = build_order_draft(FakeClient(), _pickup_context(), _plan(), dry_run=False)
+    draft.submitted = True
+    draft.quoted_cents = 4000
+    draft.response = {
+        "orderId": "X9", "payId": "P9",
+        "payH5Url": "https://m.mcd.cn/mcp/scanToPay?orderId=X9",
+        "orderDetail": {"orderStatus": "待支付", "expirePayTime": "2026-10-12 18:45:10",
+                        "storeName": "某门店", "storeAddress": "某地址",
+                        "pickupCode": ""},
+    }
+    return draft
+
+
+def test_payment_card_markdown_format():
+    draft = _submitted_draft()
+    md = draft.render_card("md")
+    assert md.startswith("## ")
+    assert "| 订单号 | `X9` |" in md
+    assert "点击支付" in md
+    assert "https://m.mcd.cn/mcp/scanToPay?orderId=X9" in md
+    assert "18:45:10" in md
+
+
+def test_payment_card_json_format_is_parseable():
+    import json
+    draft = _submitted_draft()
+    payload = json.loads(draft.render_card("json"))
+    assert payload["orderId"] == "X9"
+    assert payload["payId"] == "P9"
+    assert payload["amountYuan"] == 40.0
+    assert payload["paymentUrl"].startswith("https://")
+    assert payload["storeAddress"] == "某地址"
+    assert payload["storeCode"] == "1950564"
+
+
+def test_payment_card_default_is_plain_text():
+    draft = _submitted_draft()
+    text = draft.render_card()
+    assert text == draft.payment_card()
+    assert "🍟" in text
+    # 未知格式回落到纯文本,而不是抛异常
+    assert draft.render_card("yml") == draft.payment_card()
+
+
+def test_payment_card_empty_when_not_submitted():
+    draft = build_order_draft(FakeClient(), _pickup_context(), _plan())
+    assert draft.render_card("text") == ""
+    assert draft.render_card("md") == ""
+
+
+def test_pickup_reminder_absent_until_code_exists():
+    """取餐码只有进入「配餐中」后才有值 —— 不能编一个出来。"""
+    draft = _submitted_draft()
+    assert draft.pickup_code == ""
+    reminder = draft.pickup_reminder()
+    assert "A123" not in reminder
+
+    fresh = build_order_draft(FakeClient(), _pickup_context(), _plan())
+    assert fresh.pickup_reminder() == "", "没下单就不该有取餐提醒"
+
+
+def test_pickup_reminder_with_code():
+    draft = _submitted_draft()
+    draft.response["orderDetail"]["pickupCode"] = "A123"
+    assert draft.pickup_code == "A123"
+    reminder = draft.pickup_reminder()
+    assert "A123" in reminder
+    # 门店名取自 StoreContext(取餐地点),而不是订单详情
+    assert "测试门店" in reminder
+
+
+def test_describe_order_shows_pickup_code_when_paid():
+    text = describe_order({
+        "orderId": "X6", "orderStatus": "配餐中-已支付", "status": "2",
+        "pickupCode": "B456", "lockerCode": "C789", "totalAmount": "40",
+    })
+    assert "B456" in text
+    assert "C789" in text
+    assert "已支付" in text
+
+
+def test_share_format_inference():
+    from mcdteam.cli import _resolve_share_format
+
+    assert _resolve_share_format("card.md") == "md"
+    assert _resolve_share_format("card.markdown") == "md"
+    assert _resolve_share_format("card.json") == "json"
+    assert _resolve_share_format("card.txt") == "text"
+    assert _resolve_share_format("card") == "text"
+    # 显式指定优先于扩展名
+    assert _resolve_share_format("card.txt", "md") == "md"
+    assert _resolve_share_format("card.md", "json") == "json"
+
+
 # ------------------------------------------------------- 订单状态语义与订单列表
 @pytest.mark.parametrize("text,group", [
     ("待支付", "pending_payment"),
