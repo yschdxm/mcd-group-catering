@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+
+# 测试与缓存
+.pytest_cache/
+.coverage
+htmlcov/
+
+# 本地敏感文件:绝对不要提交任何含真实 Token 的文件
+.env
+.env.*
+!.env.example
+*.local
+token.txt
+secrets.json
+
+# 运行产物(示例输出除外)
+probe-report.json
+plan.json
+proposal.md
+*.local.json
+!examples/*.json
+!examples/*.md

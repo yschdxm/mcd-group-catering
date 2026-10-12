@@ -1,0 +1,391 @@
+{
+  "requirements": {
+    "headcount": 14,
+    "kids": 0,
+    "budgetTotalYuan": 480.0,
+    "budgetPerPersonYuan": null,
+    "budgetYuan": 480.0,
+    "mode": "delivery",
+    "mealTime": "lunch",
+    "reserveAt": "2026-10-13 12:00",
+    "hardRules": [
+      "不吃辣"
+    ],
+    "softRules": [
+      "低卡优先",
+      "需要可分食的小食/拼盘"
+    ],
+    "targets": {
+      "maxKcalPerPerson": null,
+      "minProteinPerPerson": null,
+      "maxSodiumPerPerson": null
+    },
+    "notes": [
+      "人数 = 14",
+      "总预算 = 480 元",
+      "送达/取餐时间 = 2026-10-13 12:00",
+      "用餐时段(按时间推断) = lunch",
+      "硬性忌口:不吃辣",
+      "软性偏好:低卡优先、需要可分食的小食/拼盘"
+    ]
+  },
+  "plan": {
+    "storeCode": "1950564",
+    "storeName": "",
+    "headcount": 14,
+    "budgetYuan": 480.0,
+    "subtotalYuan": 472.0,
+    "localEstimateYuan": null,
+    "discountYuan": 0.0,
+    "deliveryFeeYuan": 0.0,
+    "payableYuan": 472.0,
+    "perPersonYuan": 33.71,
+    "underBudget": true,
+    "totalQuantity": 36,
+    "roleCounts": {
+      "主食": 14,
+      "小食": 9,
+      "饮料": 12,
+      "甜品": 1
+    },
+    "verifiedByApi": false,
+    "relaxations": [],
+    "warnings": [
+      "有 7 件餐品缺少官方营养数据,营养合计为下限值而非精确值"
+    ],
+    "couponsApplied": [],
+    "promotionsApplied": [],
+    "items": [
+      {
+        "productCode": "1106",
+        "productName": "培根蔬萃双层牛堡",
+        "role": "main",
+        "roleLabel": "主食",
+        "quantity": 1,
+        "unitPrice": 2450,
+        "unitPriceYuan": 24.5,
+        "subtotal": 2450,
+        "nutrition": {
+          "productName": "培根蔬萃双层牛堡",
+          "energyKcal": 442.0,
+          "energyKj": 1850.0,
+          "protein": 24.0,
+          "fat": 23.0,
+          "carbohydrate": 34.0,
+          "sodium": 728.0,
+          "calcium": 73.0,
+          "description": null
+        }
+      },
+      {
+        "productCode": "9900003586",
+        "productName": "双层深海鳕鱼堡",
+        "role": "main",
+        "roleLabel": "主食",
+        "quantity": 2,
+        "unitPrice": 2400,
+        "unitPriceYuan": 24.0,
+        "subtotal": 4800,
+        "nutrition": {
+          "productName": "双层深海鳕鱼堡",
+          "energyKcal": 485.0,
+          "energyKj": 2029.0,
+          "protein": 28.0,
+          "fat": 21.0,
+          "carbohydrate": 46.0,
+          "sodium": 917.0,
+          "calcium": 147.0,
+          "description": null
+        }
+      },
+      {
+        "productCode": "1600",
+        "productName": "麦香鱼",
+        "role": "main",
+        "roleLabel": "主食",
+        "quantity": 1,
+        "unitPrice": 2250,
+        "unitPriceYuan": 22.5,
+        "subtotal": 2250,
+        "nutrition": {
+          "productName": "麦香鱼",
+          "energyKcal": 325.0,
+          "energyKj": 1359.0,
+          "protein": 16.0,
+          "fat": 13.0,
+          "carbohydrate": 35.0,
+          "sodium": 556.0,
+          "calcium": 99.0,
+          "description": null
+        }
+      },
+      {
+        "productCode": "1450",
+        "productName": "麦香鸡",
+        "role": "main",
+        "roleLabel": "主食",
+        "quantity": 3,
+        "unitPrice": 1700,
+        "unitPriceYuan": 17.0,
+        "subtotal": 5100,
+        "nutrition": {
+          "productName": "麦香鸡",
+          "energyKcal": 369.0,
+          "energyKj": 1546.0,
+          "protein": 15.0,
+          "fat": 17.0,
+          "carbohydrate": 39.0,
+          "sodium": 731.0,
+          "calcium": 73.0,
+          "description": null
+        }
+      },
+      {
+        "productCode": "520445",
+        "productName": "薄皮焦香V翅",
+        "role": "side",
+        "roleLabel": "小食",
+        "quantity": 4,
+        "unitPrice": 1600,
+        "unitPriceYuan": 16.0,
+        "subtotal": 6400,
+        "nutrition": {
+          "productName": "薄皮焦香V翅",
+          "energyKcal": 192.0,
+          "energyKj": 804.0,
+          "protein": 17.0,
+          "fat": 11.0,
+          "carbohydrate": 6.0,
+          "sodium": 594.0,
+          "calcium": 15.0,
+          "description": null
+        }
+      },
+      {
+        "productCode": "9900008747",
+        "productName": "牛肉堡单品精选",
+        "role": "main",
+        "roleLabel": "主食",
+        "quantity": 7,
+        "unitPrice": 1400,
+        "unitPriceYuan": 14.0,
+        "subtotal": 9800,
+        "nutrition": null
+      },
+      {
+        "productCode": "4437",
+        "productName": "小杯玉米杯",
+        "role": "side",
+        "roleLabel": "小食",
+        "quantity": 1,
+        "unitPrice": 1300,
+        "unitPriceYuan": 13.0,
+        "subtotal": 1300,
+        "nutrition": {
+          "productName": "小杯玉米杯",
+          "energyKcal": 53.0,
+          "energyKj": 223.0,
+          "protein": 2.0,
+          "fat": 1.0,
+          "carbohydrate": 7.0,
+          "sodium": 1.0,
+          "calcium": 6.0,
+          "description": null
+        }
+      },
+      {
+        "productCode": "3505",
+        "productName": "锡兰红茶",
+        "role": "drink",
+        "roleLabel": "饮料",
+        "quantity": 2,
+        "unitPrice": 1150,
+        "unitPriceYuan": 11.5,
+        "subtotal": 2300,
+        "nutrition": {
+          "productName": "锡兰红茶",
+          "energyKcal": 2.0,
+          "energyKj": 8.0,
+          "protein": 0.0,
+          "fat": 0.0,
+          "carbohydrate": 0.0,
+          "sodium": 0.0,
+          "calcium": 5.0,
+          "description": null
+        }
+      },
+      {
+        "productCode": "520689",
+        "productName": "小杯鲜萃咖啡",
+        "role": "drink",
+        "roleLabel": "饮料",
+        "quantity": 6,
+        "unitPrice": 950,
+        "unitPriceYuan": 9.5,
+        "subtotal": 5700,
+        "nutrition": {
+          "productName": "小杯鲜萃咖啡",
+          "energyKcal": 15.0,
+          "energyKj": 63.0,
+          "protein": 1.0,
+          "fat": 0.0,
+          "carbohydrate": 3.0,
+          "sodium": 2.0,
+          "calcium": 6.0,
+          "description": null
+        }
+      },
+      {
+        "productCode": "3010",
+        "productName": "雪碧小杯",
+        "role": "drink",
+        "roleLabel": "饮料",
+        "quantity": 4,
+        "unitPrice": 950,
+        "unitPriceYuan": 9.5,
+        "subtotal": 3800,
+        "nutrition": {
+          "productName": "雪碧小杯",
+          "energyKcal": 76.0,
+          "energyKj": 319.0,
+          "protein": 0.0,
+          "fat": 0.0,
+          "carbohydrate": 19.0,
+          "sodium": 21.0,
+          "calcium": 0.0,
+          "description": null
+        }
+      },
+      {
+        "productCode": "6102",
+        "productName": "苹果片一袋(60g)",
+        "role": "side",
+        "roleLabel": "小食",
+        "quantity": 4,
+        "unitPrice": 700,
+        "unitPriceYuan": 7.0,
+        "subtotal": 2800,
+        "nutrition": {
+          "productName": "苹果片",
+          "energyKcal": 32.0,
+          "energyKj": 133.0,
+          "protein": 0.0,
+          "fat": 0.0,
+          "carbohydrate": 7.0,
+          "sodium": 0.0,
+          "calcium": 18.0,
+          "description": null
+        }
+      },
+      {
+        "productCode": "515837",
+        "productName": "圆筒冰淇淋",
+        "role": "dessert",
+        "roleLabel": "甜品",
+        "quantity": 1,
+        "unitPrice": 500,
+        "unitPriceYuan": 5.0,
+        "subtotal": 500,
+        "nutrition": {
+          "productName": "圆筒冰淇淋",
+          "energyKcal": 93.0,
+          "energyKj": 391.0,
+          "protein": 2.0,
+          "fat": 3.0,
+          "carbohydrate": 14.0,
+          "sodium": 36.0,
+          "calcium": 77.0,
+          "description": null
+        }
+      }
+    ],
+    "nutrition": {
+      "total": {
+        "kcal": 4284.0,
+        "protein": 219.0,
+        "fat": 177.0,
+        "carbohydrate": 445.0,
+        "sodium": 7820.0,
+        "calcium": 946.0
+      },
+      "perPerson": {
+        "kcal": 306.0,
+        "protein": 15.6,
+        "fat": 12.6,
+        "carbohydrate": 31.8,
+        "sodium": 558.6
+      },
+      "countedQuantity": 29
+    }
+  },
+  "context": {
+    "generatedAt": "2026-10-12 17:40:12",
+    "config": {
+      "endpoint": "https://mcp.mcd.cn",
+      "token": "(未设置)",
+      "storeCode": "1950564",
+      "city": null,
+      "beCode": null,
+      "offline": true,
+      "fixtureDir": "F:\\dsh\\MC\\mcd-group-catering\\fixtures"
+    },
+    "storeContext": {
+      "storeCode": "1950564",
+      "storeName": "",
+      "mode": "delivery",
+      "orderType": 2,
+      "beType": 2,
+      "beCode": "offline",
+      "reservationDate": "2026-10-13 12:00",
+      "addressId": null,
+      "city": null
+    },
+    "calls": [],
+    "snapshots": [
+      "query-meals <- F:\\dsh\\MC\\mcd-group-catering\\fixtures\\query-meals.1950564.json",
+      "list-nutrition-foods <- F:\\dsh\\MC\\mcd-group-catering\\fixtures\\nutrition_raw.txt",
+      "query-store-coupons <- F:\\dsh\\MC\\mcd-group-catering\\fixtures\\query-store-coupons.1950564.json"
+    ],
+    "steps": [
+      {
+        "step": "resolve_store",
+        "note": "离线模式使用占位 beCode"
+      },
+      {
+        "step": "resolve_store",
+        "storeCode": "1950564",
+        "source": "explicit"
+      },
+      {
+        "step": "query-meals",
+        "storeCode": "1950564",
+        "codes": 117
+      },
+      {
+        "step": "price-snapshot-mismatch",
+        "capturedOrderType": 1,
+        "requestedOrderType": 2,
+        "note": "快照价格来自不同的点餐方式,金额仅供演示,请以实时接口为准"
+      },
+      {
+        "step": "calculate-price",
+        "requested": 117,
+        "priced": 116
+      },
+      {
+        "step": "list-nutrition-foods",
+        "source": "snapshot"
+      },
+      {
+        "step": "query-store-coupons",
+        "coupons": 2
+      },
+      {
+        "step": "plan",
+        "payableYuan": 472.0,
+        "items": 36,
+        "underBudget": true
+      }
+    ]
+  }
+}

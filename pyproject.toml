@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mcd-team-catering"
+version = "1.0.0"
+description = "麦麦团餐统筹官 —— 基于麦当劳中国 MCP 的企业团餐约束求解与比价引擎"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "mcd-team-catering contributors" }]
+keywords = ["mcdonalds", "mcp", "group-order", "catering", "optimization"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Operating System :: OS Independent",
+  "Topic :: Office/Business",
+]
+# 特意保持零第三方运行时依赖:标准库即可运行,便于评审一键复现
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+
+[project.scripts]
+mcdteam = "mcdteam.cli:main"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-q"
