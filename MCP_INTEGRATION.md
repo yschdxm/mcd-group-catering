@@ -43,7 +43,10 @@
 | 11 | `query-promotions` ✅ | 团餐满减/满折 | `storeCode`、`beCode`、`beType=6`、`orderType=2` | 企业团餐场景解析促销规则 |
 | 12 | `query-meal-assistance` ✅ | 团餐助餐服务 | `storeCode`、`orderType=2`、`beType=6` | **取 `gmServiceCode`**:团餐取价与下单的前置条件 |
 | 13 | `campaign-calendar` | 活动日历 | — | 提示当月在进行的活动 |
-| 14 | `create-order` | 下单 | `storeCode`、`items[]`、`takeWayCode`、`reservationDate` | **仅按用户明确确认后调用**,绝不使用快照兜底 |
+| 14 | `create-order` ✅ | 下单 | `storeCode`、`items[]`、`takeWayCode`/`addressId`、`beCode?`、`gmServiceCode?` | **仅在用户三重闸门全开后调用**,不使用快照兜底 |
+| 15 | `query-order` ✅ | 查询订单状态 | `orderId` | 只读,下单后的状态确认 |
+| 16 | `order-list` ✅ | 历史订单 | — | 只读,`order list` 子命令 |
+| 17 | `cancel-order` ✅ | 取消订单 | `orderId`、`cancelReasonCode` | 有副作用,需用户确认 |
 
 其余工具(`mall-*`、`party-*`、`draw-lottery` 等)与本项目的团餐场景无关,未接入。
 
@@ -303,7 +306,7 @@ body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("ut
 | 错误分层 | `MCPAuthError` / `MCPRateLimitError` / `MCPBusinessError` / `MCPProtocolError` / `MCPTransportError` |
 | 业务码检查 | 强制检查 `structuredContent.success`,避免「HTTP 200 + 业务失败」被当成成功 |
 | 离线可复现 | `fixtures/` 内置真实快照;`--offline` 全程不发网络请求 |
-| 资金安全 | 仅 `create-order` 会真实下单,且 `use_snapshot=False`;默认只输出方案 |
+| 资金安全 | **默认 dry-run**;真实下单需 `--pay` + 环境变量 `MCD_ALLOW_REAL_ORDER=1` 双闸门;提交前重新核价,金额超容差(¥1.00)默认拒绝;`create-order` 禁用快照兜底 |
 | 密钥安全 | Token 只从环境变量/命令行读取,报告与日志统一 `redact()` 脱敏 |
 | 可测试性 | 70 个单元测试;`transport` 可注入,便于 mock |
 

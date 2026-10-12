@@ -170,6 +170,53 @@ python scripts/plan.py "14个人 预算480元 不吃辣 两个减脂 12点送到
 如果你只想在终端里用,直接看下面的[快速开始](#快速开始)。
 两条路径共用同一个引擎,输出一致。
 
+### 下单(默认不执行)
+
+麦当劳 MCP **没有沙箱/测试环境** —— `create-order` 的 schema 中不存在任何
+dry-run 或测试标志,调用成功即产生**真实待支付订单**。因此本项目把下单关在三道闸门后面:
+
+| 闸门 | 怎么开 |
+|---|---|
+| ① 用户明确确认 | 用户说出"下单""确认"之类的话 |
+| ② 命令行 `--pay` | `order pay ... --pay` |
+| ③ 环境变量 | `MCD_ALLOW_REAL_ORDER=1` |
+
+**先预览(安全,零副作用)**:
+
+```bash
+python -m mcdteam --store 1950564 order preview "6个人 预算150元 不吃辣 到店取" --mode pickup
+```
+
+```
+🧾 下单请求装配
+门店        1950564
+取餐方式    到店自取(orderType=1, beType=1)
+取餐方式码  eat-in
+商品件数    13 件
+服务端报价  ¥147.00
+方案金额    ¥147.00
+
+  可选取餐方式:eat-in(堂食)、take-in-store(外带)
+  · dry-run:未调用 create-order
+⏸ 未下单(dry-run 或安全闸门未放行)
+```
+
+**真正下单**:
+
+```powershell
+$env:MCD_ALLOW_REAL_ORDER = "1"      # 必须由使用者本人设置
+python -m mcdteam --store 1950564 order pay "6个人 预算150元 不吃辣 到店取" --mode pickup --pay
+```
+
+提交前会**重新核价**;若与服务端报价相差超过 ¥1.00,默认拒绝提交并把差异告诉你,
+需要显式 `--allow-amount-mismatch` 才继续。
+
+下单后可用 `order status --order-id <订单号>` 查询、
+`order cancel --order-id <订单号> --reason-code 1` 取消。
+
+> Agent 侧被明确禁止:不得替用户设置 `MCD_ALLOW_REAL_ORDER`,
+> 也不得为了"试试看"而下单(见 `SKILL.md` 铁律第 10 条)。
+
 ---
 
 ## 为什么做这个
@@ -329,6 +376,10 @@ python -m mcdteam leaderboard            # 抓官方排行榜,看赛道拥挤度
 | `probe` | 运行 MCP 能力探针,输出可复现的可用性报告 |
 | `scan` | 提交前扫描仓库中是否残留真实凭据 |
 | `agent-plan` | **Agent 专用**:stdout 只输出一个 JSON 信封,失败也返回结构化错误 |
+| `order preview` | **装配下单请求但不提交**(dry-run),打印会提交什么 |
+| `order pay` | **真实下单** —— 需 `--pay` + 环境变量 `MCD_ALLOW_REAL_ORDER=1` 双闸门 |
+| `order status` / `order list` | 查询订单状态 / 历史订单(只读) |
+| `order cancel` | 取消订单(有副作用,需确认) |
 | `leaderboard` | 抓取官方排行榜(只读,用于评估赛道拥挤度) |
 
 另有一个独立脚本用于**把演示快照换成你自己门店的数据**(快照只含门店编码、
@@ -452,6 +503,7 @@ mcd-group-catering/
 │   │   └── planner.py                候选过滤 + 多起点局部搜索 + 核价收敛
 │   ├── report/render.py          终端卡片 / Markdown 提案 / 群聊短卡片
 │   ├── orchestrator.py           端到端流程编排
+│   ├── order.py                  下单编排:三重安全闸门 + 金额闸门 + 请求装配
 │   ├── probe.py                  MCP 能力探针(可复现的可用性报告)
 │   ├── contest.py                官方排行榜抓取(只读)
 │   └── cli.py                    命令行入口

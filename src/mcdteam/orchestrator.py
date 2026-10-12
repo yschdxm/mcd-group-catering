@@ -132,6 +132,8 @@ class Session:
 
         chosen = ""
         for service in services or []:
+            if not isinstance(service, dict):
+                continue
             code = str(service.get("gmServiceCode") or "")
             if not code or service.get("enable") is False:
                 continue

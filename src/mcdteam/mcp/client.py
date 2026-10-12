@@ -477,12 +477,28 @@ class MCPClient:
 
     def meal_assistance(self, store_code: str, order_type: int = 2, be_type: int = 6,
                         be_code: str = "") -> List[Dict[str, Any]]:
+        """查询团餐助餐服务。
+
+        实测返回结构是 ``data.mealAssistanceItems[]``(不是 ``data`` 本身为数组),
+        每项含 ``gmServiceCode`` / ``gmServiceName`` / ``serviceItems`` /
+        ``selected`` / ``enable``;不可用的项还会带 ``unusableReason``。
+        这里做兼容抽取,避免调用方踩结构差异。
+        """
         arguments: Dict[str, Any] = {
             "storeCode": store_code, "orderType": order_type, "beType": be_type,
         }
         if be_code:
             arguments["beCode"] = be_code
-        return list(self.ensure_ok("query-meal-assistance", arguments).require_data() or [])
+        data = self.ensure_ok("query-meal-assistance", arguments).require_data()
+        if isinstance(data, dict):
+            for key in ("mealAssistanceItems", "items", "list", "services"):
+                value = data.get(key)
+                if isinstance(value, list):
+                    return [item for item in value if isinstance(item, dict)]
+            return []
+        if isinstance(data, list):
+            return [item for item in data if isinstance(item, dict)]
+        return []
 
     def nutrition_raw(self, *, use_snapshot: bool = True) -> str:
         """``list-nutrition-foods`` 返回的是**文本表格**而非 JSON,需要专用解析器。
@@ -500,9 +516,46 @@ class MCPClient:
 
     # ------------------------------------------------------------------ 订单
     def create_order(self, **kwargs: Any) -> Dict[str, Any]:
-        """创建订单。**绝不使用快照兜底**,必须是实时结果。"""
+        """创建订单。
+
+        ⚠️ **这是唯一会产生真实支付链接的调用,后果不可撤销。**
+
+        因此本方法:
+
+        * **绝不使用快照兜底**(``use_snapshot=False``)——下单必须是实时结果;
+        * 不做任何自动重试之外的副作用处理,失败即失败;
+
+        调用方(``mcdteam.order``)负责在调用前完成金额校验与用户确认。
+        麦当劳 MCP **没有沙箱/测试环境**,不存在"试一单"的路径。
+        """
         result = self.ensure_ok("create-order", kwargs, use_snapshot=False)
         return result.data or {}
+
+    def query_order(self, order_id: str) -> Dict[str, Any]:
+        """查询订单状态。只读操作,可安全调用。"""
+        result = self.ensure_ok("query-order", {"orderId": order_id}, use_snapshot=False)
+        return result.data or {}
+
+    def cancel_order(self, order_id: str, cancel_reason_code: int = -1) -> Dict[str, Any]:
+        """取消订单。**有副作用**,调用前必须确认。
+
+        取消原因码:1=改主意了 2=重复下单 3=点错了 4=地址电话填错 5=送达时间选错 -1=其它
+        """
+        result = self.ensure_ok(
+            "cancel-order",
+            {"orderId": order_id, "cancelReasonCode": int(cancel_reason_code)},
+            use_snapshot=False,
+        )
+        return result.data or {}
+
+    def order_list(self) -> List[Dict[str, Any]]:
+        """查询历史订单(只读)。"""
+        data = self.ensure_ok("order-list", {}, use_snapshot=False).require_data()
+        if isinstance(data, dict):
+            return list(data.get("list") or [])
+        if isinstance(data, list):
+            return list(data)
+        return []
 
     def close(self) -> None:  # pragma: no cover - 为上下文管理器留出扩展点
         return None

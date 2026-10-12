@@ -23,6 +23,13 @@ from .config import AppConfig, TOKEN_ENV, mask_token
 from .data.nutrition import NutritionBook
 from .mcp.errors import MCPAuthError, MCPBusinessError, MCPError
 from .orchestrator import Session, build_requirements
+from .order import (
+    CANCEL_REASONS,
+    REAL_ORDER_ENV,
+    OrderSafetyError,
+    build_order_draft,
+    submit_order,
+)
 from .report.render import render_chat_card, render_markdown, render_terminal
 from .solve.constraints import CateringRequirements, parse_requirements
 
@@ -110,6 +117,53 @@ def _build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--max-items", type=int, default=0)
     ap.add_argument("--no-verify", action="store_true")
     ap.add_argument("--json", dest="json_path", help="同时把信封写入该文件")
+
+    # 下单:默认 dry-run,真实下单需要 --pay + 环境变量双闸门
+    order = sub.add_parser("order", help="下单相关操作(默认 dry-run,不会真实下单)")
+    order_sub = order.add_subparsers(dest="order_action", required=True)
+
+    for name, help_text in (("preview", "装配下单请求但不提交(dry-run)"),
+                            ("pay", "真实创建订单 —— 需要 --pay 且设置 "
+                                    f"{REAL_ORDER_ENV}=1")):
+        node = order_sub.add_parser(name, help=help_text)
+        node.add_argument("text", nargs="*", help="自然语言需求")
+        node.add_argument("--headcount", type=int)
+        node.add_argument("--budget", type=float)
+        node.add_argument("--per-person", type=float)
+        node.add_argument("--mode")
+        node.add_argument("--at", dest="reserve_at")
+        node.add_argument("--avoid", action="append", default=[])
+        node.add_argument("--prefer", action="append", default=[])
+        node.add_argument("--max-kcal", type=float)
+        node.add_argument("--min-protein", type=float)
+        node.add_argument("--effort", type=int, default=48)
+        node.add_argument("--max-items", type=int, default=0)
+        node.add_argument("--no-verify", action="store_true")
+        node.add_argument("--take-way", default="",
+                          help="到店/得来速场景的取餐方式码,如 eat-in / take-in-store")
+        node.add_argument("--remark", default="", help="订单备注(≤50 字,仅外送场景)")
+        node.add_argument("--tableware", type=lambda v: str(v).lower() in ("1", "true", "yes"),
+                          default=None, help="是否需要餐具")
+        node.add_argument("--no-color", action="store_true")
+        node.add_argument("--json", dest="json_path")
+        if name == "pay":
+            node.add_argument("--pay", action="store_true",
+                              help="显式确认真实下单(还需环境变量闸门)")
+            node.add_argument("--allow-amount-mismatch", action="store_true",
+                              help="金额超出容差时仍提交(谨慎)")
+
+    st = order_sub.add_parser("status", help="查询订单状态(只读)")
+    st.add_argument("--order-id", required=True)
+    st.add_argument("--json", dest="json_path")
+
+    cn = order_sub.add_parser("cancel", help="取消订单(有副作用)")
+    cn.add_argument("--order-id", required=True)
+    cn.add_argument("--reason-code", type=int, default=-1,
+                    help="取消原因码:" + "、".join(
+                        f"{k}={v}" for k, v in sorted(CANCEL_REASONS.items())))
+    cn.add_argument("--json", dest="json_path")
+
+    order_sub.add_parser("list", help="查询历史订单(只读)")
 
     return parser
 
@@ -379,6 +433,153 @@ def agent_plan(args: argparse.Namespace, config: AppConfig) -> Dict[str, Any]:
     return envelope
 
 
+# ------------------------------------------------------------------- 下单
+def _plan_and_session(args: argparse.Namespace, config: AppConfig):
+    """复用 agent_plan 的求解结果,同时把 Session 带出来供下单使用。
+
+    下单需要 ``Session.store_context``(storeCode/beCode/gmServiceCode/addressId),
+    这些字段不在 JSON 信封里,因此这里重新执行一遍求解并返回内部对象。
+
+    :raises MCPError: 求解失败时向上抛,由调用方转成结构化输出。
+    """
+    text = " ".join(getattr(args, "text", None) or [])
+    requirements = build_requirements(text, **_plan_overrides(args))
+    if requirements.headcount <= 0:
+        raise MCPBusinessError("人数必须大于 0", tool="plan")
+    if not config.offline and not config.has_token:
+        raise MCPAuthError(f"未设置麦当劳 MCP Token(环境变量 {TOKEN_ENV})", tool="plan")
+    session = Session(config)
+    plan = session.plan(requirements, verify=not getattr(args, "no_verify", False))
+    return session, plan, requirements
+
+
+def cmd_order(args: argparse.Namespace, config: AppConfig) -> int:
+    """下单相关子命令。
+
+    **安全说明**:麦当劳 MCP 没有沙箱环境,``create-order`` 会真实产生待支付订单。
+    因此 ``preview`` 恒为 dry-run;``pay`` 需要同时满足
+    ``--pay`` + 环境变量 ``MCD_ALLOW_REAL_ORDER=1``。
+    """
+    action = args.order_action
+
+    if action == "list":
+        session = Session(config)
+        try:
+            orders = session.client.order_list()
+        except MCPError as exc:
+            print(f"✘ 查询历史订单失败:{exc}", file=sys.stderr)
+            return 3
+        if not orders:
+            print("暂无历史订单")
+            return 0
+        print(f"{'订单号':<32}{'类型':<8}{'状态':<14}{'下单时间'}")
+        print("─" * 78)
+        for item in orders:
+            kind = "外送" if str(item.get("orderType")) == "2" else "到店"
+            print(f"{str(item.get('orderId', '')):<32}{kind:<8}"
+                  f"{str(item.get('orderStatusText') or item.get('orderStatus') or ''):<14}"
+                  f"{item.get('createTime', '')}")
+        return 0
+
+    if action in ("status", "cancel"):
+        if not args.order_id:
+            print("✘ 需要 --order-id", file=sys.stderr)
+            return 2
+        session = Session(config)
+        try:
+            if action == "status":
+                data = session.client.query_order(args.order_id)
+            else:
+                data = session.client.cancel_order(args.order_id, args.reason_code)
+        except MCPError as exc:
+            print(f"✘ {'查询' if action == 'status' else '取消'}订单失败:{exc}",
+                  file=sys.stderr)
+            return 3
+        if args.json_path:
+            with open(args.json_path, "w", encoding="utf-8") as handle:
+                json.dump(data, handle, ensure_ascii=False, indent=2, default=str)
+        print(json.dumps(data, ensure_ascii=False, indent=2, default=str))
+        if action == "cancel":
+            print(f"  ✔ 已提交取消请求(原因:{CANCEL_REASONS.get(args.reason_code, '其它')})",
+                  file=sys.stderr)
+        return 0
+
+    # ------------------------------------------------------ preview / pay
+    if not config.has_token:
+        print(f"✘ 下单需要麦当劳 MCP Token(环境变量 {TOKEN_ENV});"
+              "离线模式只能生成方案,无法下单", file=sys.stderr)
+        return 2
+    try:
+        session, plan, requirements = _plan_and_session(args, config)
+    except MCPBusinessError as exc:
+        print(f"✘ {exc.message}", file=sys.stderr)
+        return 2
+    except MCPError as exc:
+        print(f"✘ 生成方案失败:{exc}", file=sys.stderr)
+        return 3
+
+    if not plan.lines:
+        print("✘ 方案为空,无法下单", file=sys.stderr)
+        return 1
+    if not session.store_context:
+        print("✘ 缺少门店上下文,无法下单", file=sys.stderr)
+        return 1
+
+    dry_run = action != "pay" or not args.pay
+    try:
+        draft = build_order_draft(
+            session.client, session.store_context, plan,
+            take_way=args.take_way, remark=args.remark,
+            need_tableware=args.tableware, dry_run=dry_run,
+            progress=_emit if config.verbose else None,
+        )
+    except (OrderSafetyError, MCPError) as exc:
+        print(f"✘ 装配下单请求失败:{exc}", file=sys.stderr)
+        return 3
+
+    print(render_terminal(plan, requirements, color=not args.no_color,
+                          source_note=session.snapshot_note()))
+    print("─" * 68)
+    print("🧾 下单请求装配")
+    print("─" * 68)
+    print(draft.summary())
+    if draft.take_way_options:
+        print("\n  可选取餐方式:" + "、".join(
+            f"{item.get('code')}({item.get('title', '')})" for item in draft.take_way_options))
+    for note in draft.notes:
+        print(f"  · {note}")
+    for warning in draft.warnings:
+        print(f"  ⚠ {warning}")
+
+    if not dry_run:
+        draft = submit_order(session.client, draft, allow_real=args.pay,
+                             allow_amount_mismatch=args.allow_amount_mismatch)
+
+    print("─" * 68)
+    if draft.submitted:
+        print(f"  ✅ 订单已创建:{draft.order_id}")
+        if draft.payment_url:
+            print(f"  💳 支付链接:{draft.payment_url}")
+        print("  提示:支付完成后可用 `order status --order-id "
+              f"{draft.order_id}` 查询最新状态")
+    elif draft.error:
+        print(f"  ✘ 下单失败:{draft.error['message']}")
+        if draft.error.get("traceId"):
+            print(f"    traceId:{draft.error['traceId']}")
+    else:
+        print("  ⏸ 未下单(dry-run 或安全闸门未放行)")
+        print("  要真实下单需同时满足:传 --pay 且设置环境变量 "
+              f"{REAL_ORDER_ENV}=1")
+        print("  ⚠ 麦当劳 MCP 没有测试环境,下单会产生真实待支付订单")
+
+    if args.json_path:
+        with open(args.json_path, "w", encoding="utf-8") as handle:
+            json.dump({"plan": plan.to_dict(), "order": draft.to_dict()},
+                      handle, ensure_ascii=False, indent=2, default=str)
+        print(f"  ✔ JSON 已写入 {args.json_path}", file=sys.stderr)
+    return 0
+
+
 def _plan_overrides(args: argparse.Namespace) -> Dict[str, Any]:
     avoid_map = {
         "spicy": "avoid_spicy", "beef": "avoid_beef", "pork": "avoid_pork",
@@ -561,6 +762,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         "doctor": cmd_doctor,
         "plan": cmd_plan,
         "agent-plan": cmd_agent_plan,
+        "order": cmd_order,
         "menu": cmd_menu,
         "tools": cmd_tools,
         "probe": cmd_probe,

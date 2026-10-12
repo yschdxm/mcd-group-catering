@@ -73,6 +73,36 @@ query-meal-detail(storeCode, orderType, beType, code)
    └─► rounds[].choices[] 中 quantity>0 的默认组成 → 按名称匹配营养表后累加
 ```
 
+### 下单与订单(⚠️ 有副作用)
+
+```
+calculate-price(...)                          → takeWayList[].code(到店场景必取其一)
+   └─► create-order(storeCode, orderType, beType, items,
+                    takeWayCode | addressId, beCode?, gmServiceCode?,
+                    reservationDate?, remark?, needTableware?)
+        └─► orderId + 支付链接
+
+query-order(orderId)                           → 只读
+order-list()                                   → 只读
+cancel-order(orderId, cancelReasonCode)        → 有副作用
+```
+
+**`create-order` 的参数规则**(缺一不可,顺序即依赖):
+
+| 场景 | 必传 | 不传 |
+|---|---|---|
+| 到店自取(1/1) | `takeWayCode`(来自 `takeWayList[].code`) | `beCode`、`addressId` |
+| 得来速(1/5) | `takeWayCode`、`beCode` | `addressId` |
+| 麦乐送(2/2) | `beCode`、`addressId` | `takeWayCode` |
+| 企业团餐(2/6) | `beCode`、`addressId`、`gmServiceCode` | `takeWayCode` |
+
+实测 `takeWayList` 形如 `[{"code":"eat-in","title":"堂食"},{"code":"take-in-store","title":"外带"}]`,
+默认取第一项,可用 `--take-way` 指定。
+
+**麦当劳 MCP 没有沙箱/测试环境** —— 上述 schema 中不存在任何 dry-run 或测试标志,
+`create-order` 成功即产生真实待支付订单。本项目因此默认 dry-run,
+并要求 `--pay` + 环境变量 `MCD_ALLOW_REAL_ORDER=1` 双闸门。
+
 ---
 
 ## 四、九个实测坑(避免重复踩)
