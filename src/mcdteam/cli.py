@@ -28,6 +28,7 @@ from .order import (
     REAL_ORDER_ENV,
     OrderSafetyError,
     build_order_draft,
+    describe_order,
     submit_order,
 )
 from .report.render import render_chat_card, render_markdown, render_terminal
@@ -151,6 +152,10 @@ def _build_parser() -> argparse.ArgumentParser:
                               help="显式确认真实下单(还需环境变量闸门)")
             node.add_argument("--allow-amount-mismatch", action="store_true",
                               help="金额超出容差时仍提交(谨慎)")
+            node.add_argument("--allow-delivery-mismatch", action="store_true",
+                              help="门店不在该地址配送范围时仍提交(通常会失败)")
+            node.add_argument("--share", default="",
+                              help="把可转发到群里的支付卡片写入该文件")
 
     st = order_sub.add_parser("status", help="查询订单状态(只读)")
     st.add_argument("--order-id", required=True)
@@ -495,13 +500,12 @@ def cmd_order(args: argparse.Namespace, config: AppConfig) -> int:
             print(f"✘ {'查询' if action == 'status' else '取消'}订单失败:{exc}",
                   file=sys.stderr)
             return 3
+        print(describe_order(data) if action == "status"
+              else f"✔ 已取消订单 {args.order_id}"
+                   f"(原因:{CANCEL_REASONS.get(args.reason_code, '其它')})")
         if args.json_path:
             with open(args.json_path, "w", encoding="utf-8") as handle:
                 json.dump(data, handle, ensure_ascii=False, indent=2, default=str)
-        print(json.dumps(data, ensure_ascii=False, indent=2, default=str))
-        if action == "cancel":
-            print(f"  ✔ 已提交取消请求(原因:{CANCEL_REASONS.get(args.reason_code, '其它')})",
-                  file=sys.stderr)
         return 0
 
     # ------------------------------------------------------ preview / pay
@@ -553,15 +557,37 @@ def cmd_order(args: argparse.Namespace, config: AppConfig) -> int:
 
     if not dry_run:
         draft = submit_order(session.client, draft, allow_real=args.pay,
-                             allow_amount_mismatch=args.allow_amount_mismatch)
+                             allow_amount_mismatch=args.allow_amount_mismatch,
+                             allow_delivery_mismatch=args.allow_delivery_mismatch)
 
     print("─" * 68)
     if draft.submitted:
         print(f"  ✅ 订单已创建:{draft.order_id}")
+        if draft.order_status:
+            print(f"  状态:{draft.order_status}")
+        if draft.expire_pay_time:
+            print(f"  ⏰ 请在 {draft.expire_pay_time} 前完成支付,逾期订单自动关闭(不产生扣款)")
         if draft.payment_url:
             print(f"  💳 支付链接:{draft.payment_url}")
-        print("  提示:支付完成后可用 `order status --order-id "
-              f"{draft.order_id}` 查询最新状态")
+        else:
+            print("  💳 未返回支付链接,请打开麦当劳 APP 在「我的订单」中支付")
+        if draft.pickup_code:
+            print(f"  🔢 取餐码:{draft.pickup_code}")
+        print()
+        print("  📤 可转发到群里的支付卡片:")
+        print("─" * 68)
+        for line in draft.payment_card().splitlines():
+            print(f"  {line}")
+        print("─" * 68)
+        if getattr(args, "share", ""):
+            try:
+                with open(args.share, "w", encoding="utf-8") as handle:
+                    handle.write(draft.payment_card() + "\n")
+                print(f"  ✔ 支付卡片已写入 {args.share}", file=sys.stderr)
+            except OSError as exc:
+                print(f"  ⚠ 无法写入 {args.share}:{exc}", file=sys.stderr)
+        print(f"  查询状态:order status --order-id {draft.order_id}")
+        print(f"  撤销订单:order cancel --order-id {draft.order_id} --reason-code 3")
     elif draft.error:
         print(f"  ✘ 下单失败:{draft.error['message']}")
         if draft.error.get("traceId"):

@@ -461,6 +461,25 @@ class MCPClient:
             "query-store-coupons", arguments, use_snapshot=use_snapshot
         ).require_data() or [])
 
+    def store_name(self, store_code: str, *, be_type: int = 1,
+                   search_type: int = 1) -> str:
+        """尽力查询门店名称。
+
+        为什么需要单独的查询:直接指定 ``--store`` 时不会走门店列表接口,
+        因此 ``StoreContext.store_name`` 为空,报告里只能显示编码。
+        实测 ``query-nearby-stores(searchType=1)`` 返回的是「收藏餐厅」,
+        不一定包含目标门店,所以这里只做**尽力而为**,查不到就返回空串,
+        绝不让它影响主流程。
+        """
+        try:
+            records = self.resolve_store_code("", "", be_type=be_type)
+        except MCPError:
+            return ""
+        for record in records:
+            if str(record.get("storeCode")) == str(store_code):
+                return str(record.get("storeName") or "")
+        return ""
+
     def promotions(self, store_code: str, be_code: str, be_type: int = 6,
                    order_type: int = 2, reservation_date: str = "") -> List[Dict[str, Any]]:
         """企业团餐专属促销规则(满减 / 满折)。仅 beType=6 可用。"""

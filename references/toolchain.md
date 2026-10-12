@@ -99,9 +99,51 @@ cancel-order(orderId, cancelReasonCode)        → 有副作用
 实测 `takeWayList` 形如 `[{"code":"eat-in","title":"堂食"},{"code":"take-in-store","title":"外带"}]`,
 默认取第一项,可用 `--take-way` 指定。
 
+### `create-order` 的返回(实测)
+
+```
+{
+  "orderId": "1030598060000754989987903144",
+  "payId": "111029822961040658432",
+  "payH5Url": "https://m.mcd.cn/mcp/scanToPay?orderId=...",   ← 支付链接(注意字段名)
+  "orderDetail": {
+    "orderStatus": "待支付", "status": "10",
+    "storeName": "...", "storeAddress": "...",
+    "orderProductList": [{productName, quantity, price, comboItemList[{itemName,itemQuantity}]}],
+    "totalAmount": "49.5", "realTotalAmount": "49.5", "totalDiscountAmount": "0",
+    "couponList": [], "createTime": "...", "expirePayTime": "...",   ← 约 15 分钟后
+    "takeWay": "堂食", "pickupCode": "", "payId": "...", "remark": ""
+  }
+}
+```
+
+* **支付链接字段是 `payH5Url`**,不是直觉上的 `payUrl`;
+* `expirePayTime` 是支付截止时间,**实测下单后约 15 分钟**,逾期订单自动关闭且不扣款;
+* `orderProductList[].comboItemList[]` 会展开套餐实际包含的单品 ——
+  这反过来印证了「同一编码在不同接口叫法不同」的问题(实测编码 `9900008747`
+  在价格接口叫「牛肉堡单品精选」,而订单里显示它其实含「汉堡包」);
+* `orderStatus` 文案实测有:`待支付` / `订单已取消`,`status` 码 `10`(待支付)、`60`(已取消)。
+
+### 下单前的配送范围校验(必须做)
+
+`create-order` 对"门店与地址不匹配"的报错是 **`无法配送到当前地址`**,而且
+**只在提交那一刻才暴露** —— 菜单、取价、装配全都成功。因此务必提前用
+`delivery-query-stores(addressId, beType)` 反查该地址的可配送门店,
+确认目标 `storeCode` 在列表内。本项目已内置该校验(`order.validate_store_address`)。
+
+### `query-order` / `cancel-order`
+
+```
+query-order(orderId)                     → 只读;返回结构见 create-order 的 orderDetail
+cancel-order(orderId, cancelReasonCode)  → 返回 {"cancelResult": true, "orderId": "..."}
+```
+
 **麦当劳 MCP 没有沙箱/测试环境** —— 上述 schema 中不存在任何 dry-run 或测试标志,
 `create-order` 成功即产生真实待支付订单。本项目因此默认 dry-run,
 并要求 `--pay` + 环境变量 `MCD_ALLOW_REAL_ORDER=1` 双闸门。
+
+> 补充:未支付的订单**不会产生扣款**,可以用 `cancel-order` 干净撤销。
+> 本项目在开发过程中用这种方式完整验证了「创建 → 查询 → 取消 → 复验」全链路。
 
 ---
 

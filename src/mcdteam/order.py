@@ -32,7 +32,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Dict, List, Optional, Sequence
 
 from .mcp.context import FulfillmentMode, StoreContext
@@ -71,6 +71,8 @@ class OrderDraft:
     plan_payable_cents: int = 0
     take_way_options: List[Dict[str, Any]] = field(default_factory=list)
     take_way_code: str = ""
+    #: 外送/团餐的配送范围校验结果(到店场景为 applicable=False)
+    delivery_check: Dict[str, Any] = field(default_factory=dict)
     dry_run: bool = True
     notes: List[str] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
@@ -93,15 +95,51 @@ class OrderDraft:
             value = self.response.get(key)
             if value:
                 return str(value)
+        detail = self.response.get("orderDetail")
+        if isinstance(detail, dict) and detail.get("orderId"):
+            return str(detail["orderId"])
         return ""
 
     @property
     def payment_url(self) -> str:
-        for key in ("payUrl", "paymentUrl", "payLink", "url", "qrCodeUrl", "h5Url"):
+        """支付链接。
+
+        实测字段名是 ``payH5Url``(形如
+        ``https://m.mcd.cn/mcp/scanToPay?orderId=...``),
+        不是直觉上的 ``payUrl``;这里同时兼容若干别名。
+        """
+        for key in ("payH5Url", "payUrl", "paymentUrl", "payLink", "h5Url",
+                    "qrCodeUrl", "url"):
             value = self.response.get(key)
             if value and str(value).startswith("http"):
                 return str(value)
         return ""
+
+    @property
+    def order_detail(self) -> Dict[str, Any]:
+        detail = self.response.get("orderDetail")
+        return detail if isinstance(detail, dict) else {}
+
+    @property
+    def order_status(self) -> str:
+        return str(self.order_detail.get("orderStatus")
+                   or self.response.get("orderStatus") or "")
+
+    @property
+    def expire_pay_time(self) -> str:
+        """支付超时时间。实测下单后约 15 分钟。"""
+        return str(self.order_detail.get("expirePayTime")
+                   or self.response.get("expirePayTime") or "")
+
+    @property
+    def pickup_code(self) -> str:
+        return str(self.order_detail.get("pickupCode")
+                   or self.response.get("pickupCode") or "")
+
+    @property
+    def pay_id(self) -> str:
+        return str(self.response.get("payId")
+                   or self.order_detail.get("payId") or "")
 
     def summary(self) -> str:
         """一段可读的装配摘要,dry-run 时也能看清会提交什么。"""
@@ -124,6 +162,9 @@ class OrderDraft:
         if self.request.get("remark"):
             lines.append(f"备注        {self.request['remark']}")
         lines.append(f"商品件数    {sum(i['quantity'] for i in self.items)} 件")
+        check = self.delivery_check or {}
+        if check.get("applicable"):
+            lines.append(f"配送校验    {'通过' if check.get('ok') else '未通过'}")
         lines.append(f"服务端报价  ¥{self.quoted_cents / 100:,.2f}")
         lines.append(f"方案金额    ¥{self.plan_payable_cents / 100:,.2f}")
         if self.amount_diff_cents:
@@ -144,14 +185,46 @@ class OrderDraft:
             "amountDiffYuan": round(self.amount_diff_cents / 100.0, 2),
             "amountOk": self.amount_ok,
             "takeWayOptions": self.take_way_options,
+            "deliveryCheck": self.delivery_check or None,
             "takeWayCode": self.take_way_code or None,
             "notes": list(self.notes),
             "warnings": list(self.warnings),
             "orderId": self.order_id or None,
+            "payId": self.pay_id or None,
             "paymentUrl": self.payment_url or None,
+            "orderStatus": self.order_status or None,
+            "expirePayTime": self.expire_pay_time or None,
+            "pickupCode": self.pickup_code or None,
             "response": self.response or None,
             "error": self.error,
         }
+
+    def payment_card(self) -> str:
+        """一段可以直接发到群里的「订单 + 支付链接」文本。
+
+        团餐的实际流程是:统筹者下单 → 把支付链接发到群里 → 大家各自付款或
+        由财务统一支付。所以这段文本是必需的交付物,而不是装饰。
+        """
+        if not self.submitted:
+            return ""
+        name = self.store_context.store_name or self.store_context.store_code
+        lines = [
+            f"🍟 麦当劳团餐已下单 · {name}",
+            f"👥 {self.store_context.mode.label}"
+            + (f" · 预约 {self.store_context.reservation_date}"
+               if self.store_context.reservation_date else ""),
+            f"💰 应付 ¥{self.quoted_cents / 100:,.2f}",
+            f"🧾 订单号 {self.order_id}",
+        ]
+        if self.expire_pay_time:
+            lines.append(f"⏰ 请在 {self.expire_pay_time} 前完成支付,逾期订单自动关闭")
+        if self.payment_url:
+            lines.append(f"💳 支付链接 {self.payment_url}")
+        else:
+            lines.append("💳 请打开麦当劳 APP 在「我的订单」中完成支付")
+        if self.pickup_code:
+            lines.append(f"🔢 取餐码 {self.pickup_code}")
+        return "\n".join(lines)
 
 
 def pick_take_way(take_way_list: Sequence[Dict[str, Any]],
@@ -258,6 +331,14 @@ def build_order_draft(client, store_context: StoreContext, plan: CateringPlan, *
         request["needTableware"] = bool(need_tableware)
 
     draft.request = request
+
+    # 外送/团餐:提前校验门店能否配送到该地址(实测 create-order 才会报
+    # 「无法配送到当前地址」,拦在这里对用户更友好)
+    check = validate_store_address(client, store_context)
+    draft.delivery_check = check
+    if check.get("applicable") and not check.get("ok"):
+        draft.warnings.append(str(check.get("message") or "配送范围校验未通过"))
+
     draft.notes.append(
         "dry-run:未调用 create-order" if dry_run else "将真实调用 create-order"
     )
@@ -266,14 +347,16 @@ def build_order_draft(client, store_context: StoreContext, plan: CateringPlan, *
 
 def submit_order(client, draft: OrderDraft, *,
                  allow_real: bool = False,
-                 allow_amount_mismatch: bool = False) -> OrderDraft:
+                 allow_amount_mismatch: bool = False,
+                 allow_delivery_mismatch: bool = False) -> OrderDraft:
     """提交订单。
 
-    **只有同时满足下面三个条件才会真正下单**:
+    **只有同时满足下面几个条件才会真正下单**:
 
     1. ``draft.dry_run is False``(调用方显式关闭 dry-run)
     2. ``allow_real is True``(CLI 的 ``--pay``)
     3. 环境变量 ``MCD_ALLOW_REAL_ORDER=1``
+    4. 配送范围校验通过(外送/团餐场景)
 
     另外,若金额超出容差且 ``allow_amount_mismatch`` 为 False,也会中止。
     任何一条不满足都只返回 draft 并写入 ``warnings``,不会产生副作用。
@@ -293,6 +376,15 @@ def submit_order(client, draft: OrderDraft, *,
         )
         return draft
 
+    check = draft.delivery_check or {}
+    if check.get("applicable") and not check.get("ok") and not allow_delivery_mismatch:
+        draft.warnings.append(
+            "配送范围校验未通过,已中止下单(实测此时 create-order 会返回"
+            "「无法配送到当前地址」)。请改用该地址可配送的门店,"
+            "或显式允许 --allow-delivery-mismatch"
+        )
+        return draft
+
     if not draft.amount_ok and not allow_amount_mismatch:
         draft.warnings.append("金额超出容差且未允许差异,未下单(需要 --allow-amount-mismatch)")
         return draft
@@ -300,6 +392,14 @@ def submit_order(client, draft: OrderDraft, *,
     try:
         draft.response = client.create_order(**draft.request)
         draft.submitted = True
+        # 用订单返回的门店名回填上下文:到店自取路径未经过门店列表接口,
+        # 拿不到 storeName,而订单详情里有权威名称
+        detail = draft.order_detail
+        if detail.get("storeName") and not draft.store_context.store_name:
+            draft.store_context = replace(
+                draft.store_context, store_name=str(detail["storeName"]))
+        if detail.get("storeAddress"):
+            draft.notes.append(f"门店地址:{detail['storeAddress']}")
         draft.notes.append("订单已创建,请通过支付链接或麦当劳 APP 完成支付")
     except MCPError as exc:
         draft.error = {
@@ -314,3 +414,137 @@ def submit_order(client, draft: OrderDraft, *,
 
 def describe_cancel_reasons() -> str:
     return "、".join(f"{code}={text}" for code, text in sorted(CANCEL_REASONS.items()))
+
+
+#: query-order 返回的 status 码(实测)
+ORDER_STATUS_CODES = {
+    "10": "待支付",
+    "20": "已支付/制作中",
+    "30": "待取餐",
+    "40": "已完成",
+    "50": "已取消",
+    "60": "订单已取消",
+}
+
+
+def validate_store_address(client, store_context: StoreContext) -> Dict[str, Any]:
+    """外送/团餐下单前校验「门店能否配送到该地址」。
+
+    **为什么需要这一步**(实测教训):门店(北京)与地址(无锡)不匹配时,
+    ``query-meals`` / ``calculate-price`` / 请求装配**全部成功**,
+    直到 ``create-order`` 才返回::
+
+        无法配送到当前地址,请选择其他地址
+
+    也就是说这个错误只在下单那一刻暴露 —— 对用户来说,方案都排好了、
+    钱也算准了,最后一步才失败,体验很差。这里提前用
+    ``delivery-query-stores`` 反查该地址的可配送门店,把问题拦在预览阶段。
+
+    返回::
+
+        {"applicable": bool, "ok": bool, "stores": [...], "storeCodes": [...],
+         "message": str}
+
+    ``applicable=False`` 表示该场景不适用(到店/得来速),此时不做判断。
+    """
+    if store_context.mode not in (FulfillmentMode.DELIVERY, FulfillmentMode.GROUP):
+        return {"applicable": False, "ok": True, "stores": [], "storeCodes": [],
+                "message": "到店/得来速场景不涉及配送地址校验"}
+    if not store_context.address_id:
+        return {"applicable": True, "ok": False, "stores": [], "storeCodes": [],
+                "message": "缺少 addressId,无法校验配送范围"}
+
+    try:
+        stores = client.resolve_delivery_stores(
+            store_context.address_id, be_type=store_context.be_type)
+    except MCPError as exc:
+        return {"applicable": True, "ok": True, "stores": [], "storeCodes": [],
+                "message": f"配送范围校验跳过(接口不可用):{exc.message}"}
+    except (AttributeError, TypeError):
+        # 客户端未实现该方法(例如测试替身),跳过校验而不是让下单流程崩掉
+        return {"applicable": True, "ok": True, "stores": [], "storeCodes": [],
+                "message": "配送范围校验跳过(客户端不支持)"}
+
+    codes = [str(item.get("storeCode", "")) for item in stores if item]
+    ok = str(store_context.store_code) in codes
+    message = ""
+    if not ok:
+        preview = "、".join(
+            f"{item.get('storeName', '')}({item.get('storeCode', '')})"
+            for item in stores[:5]
+        )
+        message = (
+            f"门店 {store_context.store_code} 不在该地址的可配送门店列表中,"
+            "`create-order` 会返回「无法配送到当前地址」。"
+            + (f"该地址可配送的门店:{preview}" if preview else "")
+        )
+    return {"applicable": True, "ok": ok, "stores": stores,
+            "storeCodes": codes, "message": message}
+
+
+def describe_order(data: Dict[str, Any]) -> str:
+    """把 ``query-order`` 的原始返回渲染成可读文本。
+
+    实测返回结构(``data``)::
+
+        {orderId, orderStatus, status, storeName, storeAddress,
+         orderProductList[], totalAmount, realTotalAmount, totalDiscountAmount,
+         couponList[], createTime, expirePayTime, takeWay, pickupCode, payId, remark}
+
+    其中 ``orderProductList[].comboItemList[]`` 会给出套餐实际包含的单品
+    —— 这点很有用:它反过来印证了「同一个编码在价格接口与详情接口叫法不同」
+    的问题(实测编码 9900008747 在价格接口叫「牛肉堡单品精选」,
+    而订单里显示它其实是个含「汉堡包」的套餐)。
+    """
+    if not isinstance(data, dict):
+        return str(data)
+
+    current = str(data.get("orderStatus") or "")
+    code = str(data.get("status") or "")
+    if not current:
+        current = ORDER_STATUS_CODES.get(code, "未知状态")
+
+    lines: List[str] = []
+    lines.append(f"📦 订单 {data.get('orderId', '')}")
+    lines.append(f"   状态        {current}" + (f"(status={code})" if code else ""))
+    if data.get("storeName"):
+        lines.append(f"   门店        {data['storeName']}")
+    if data.get("storeAddress"):
+        lines.append(f"   地址        {data['storeAddress']}")
+    if data.get("takeWay"):
+        lines.append(f"   取餐方式    {data['takeWay']}")
+    if data.get("pickupCode"):
+        lines.append(f"   取餐码      {data['pickupCode']}")
+    if data.get("createTime"):
+        lines.append(f"   下单时间    {data['createTime']}")
+    if data.get("expirePayTime"):
+        lines.append(f"   支付截止    {data['expirePayTime']}")
+
+    products = data.get("orderProductList") or []
+    if products:
+        lines.append("   商品明细")
+        for product in products:
+            quantity = product.get("quantity", 1)
+            price = product.get("price", "")
+            lines.append(f"     · {product.get('productName', '')} ×{quantity}"
+                         + (f"  ¥{price}" if price else ""))
+            for child in product.get("comboItemList") or []:
+                lines.append(f"         └ {child.get('itemName', '')}"
+                             f" ×{child.get('itemQuantity', 1)}")
+
+    if data.get("totalAmount") is not None:
+        lines.append(f"   应付        ¥{data['totalAmount']}")
+    if data.get("totalDiscountAmount") not in (None, "0", 0):
+        lines.append(f"   优惠        -¥{data['totalDiscountAmount']}")
+    if data.get("deliveryPrice") not in (None, "0", 0):
+        lines.append(f"   配送费      ¥{data['deliveryPrice']}")
+    if data.get("remark"):
+        lines.append(f"   备注        {data['remark']}")
+
+    if current == "待支付":
+        lines.append("   ⏰ 尚未支付。逾期未支付订单会自动关闭,不会产生扣款。")
+        lines.append("   ▶ 可执行:order cancel --order-id "
+                     f"{data.get('orderId', '')} 撤销该订单")
+    if str(code) in ("50", "60") or "取消" in current:
+        lines.append("   ✔ 该订单已取消,不产生任何消费。")
+    return "\n".join(lines)

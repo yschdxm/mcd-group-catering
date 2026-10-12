@@ -83,13 +83,20 @@ class Session:
                     self._record("resolve_store", note="离线模式使用占位 beCode")
                 else:
                     be_code = self._lookup_be_code(store_code, mode, requirements)
+            store_name = ""
+            if not self.config.offline:
+                # 直接指定 --store 时不会走门店列表接口,尽力补个店名让报告更好读。
+                # 查不到也不影响主流程。
+                store_name = self.client.store_name(store_code)
             context = StoreContext(
-                store_code=store_code, mode=mode, be_code=be_code,
+                store_code=store_code, store_name=store_name, mode=mode,
+                be_code=be_code,
                 address_id=self.config.address_id,
                 reservation_date=_fmt(requirements.reserve_at),
                 city=requirements.city or self.config.city,
             )
-            self._record("resolve_store", storeCode=store_code, source="explicit")
+            self._record("resolve_store", storeCode=store_code,
+                         storeName=store_name, source="explicit")
             return self._with_gm_service(context)
 
         if self.config.offline:

@@ -2,7 +2,7 @@
 
 [![Python](https://img.shields.io/badge/python-3.9%2B-blue)](https://www.python.org/)
 [![Dependencies](https://img.shields.io/badge/dependencies-none-brightgreen)](pyproject.toml)
-[![Tests](https://img.shields.io/badge/tests-96%20passed-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/tests-129%20passed-brightgreen)](tests/)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Agent Skill](https://img.shields.io/badge/Agent%20Skill-SKILL.md-ffc72c)](SKILL.md)
 [![MCP](https://img.shields.io/badge/MCP-mcd.mcd.cn-ffc72c)](MCP_INTEGRATION.md)
@@ -208,11 +208,27 @@ $env:MCD_ALLOW_REAL_ORDER = "1"      # 必须由使用者本人设置
 python -m mcdteam --store 1950564 order pay "6个人 预算150元 不吃辣 到店取" --mode pickup --pay
 ```
 
-提交前会**重新核价**;若与服务端报价相差超过 ¥1.00,默认拒绝提交并把差异告诉你,
-需要显式 `--allow-amount-mismatch` 才继续。
+提交前会做两道校验:
 
-下单后可用 `order status --order-id <订单号>` 查询、
-`order cancel --order-id <订单号> --reason-code 1` 取消。
+1. **重新核价** —— 与服务端报价相差超过 ¥1.00 默认拒绝提交;
+2. **配送范围校验**(外送/团餐) —— 实测这个错误只在 `create-order` 那一刻才暴露
+   (`无法配送到当前地址`),项目已提前用 `delivery-query-stores` 反查,
+   不在范围内就拦住并**列出可配送门店**。
+
+下单成功后输出订单号、**支付截止时间**(实测 15 分钟)、支付链接、取餐码,
+以及一张**可直接转发到群里的支付卡片**(可用 `--share card.txt` 落盘):
+
+```
+🍟 麦当劳团餐已下单 · 门店名
+👥 到店自取
+💰 应付 ¥40.00
+🧾 订单号 1030296140000795648895630805
+⏰ 请在 2026-10-12 18:45:10 前完成支付,逾期订单自动关闭
+💳 支付链接 https://m.mcd.cn/mcp/scanToPay?orderId=1030296…
+```
+
+`order status --order-id <订单号>` 会渲染可读明细(含套餐子项展开、地址、取餐码),
+`order cancel --order-id <订单号> --reason-code 1` 可撤销未支付订单(不产生扣款)。
 
 > Agent 侧被明确禁止:不得替用户设置 `MCD_ALLOW_REAL_ORDER`,
 > 也不得为了"试试看"而下单(见 `SKILL.md` 铁律第 10 条)。
@@ -509,7 +525,7 @@ mcd-group-catering/
 │   └── cli.py                    命令行入口
 ├── tools/
 │   └── regen_fixtures.py         用你自己的门店重新生成离线快照
-├── tests/                        96 个单元测试
+├── tests/                        129 个单元测试
 └── examples/                     示例输出
 ```
 
@@ -523,7 +539,7 @@ python -m pytest -q
 
 ```text
 ...............................................................          [100%]
-96 passed
+129 passed
 ```
 
 覆盖范围:
@@ -534,6 +550,7 @@ python -m pytest -q
 | `test_menu.py` | 角色分类(含炸鸡/瓶装水/蘸酱/套餐等易错项)、份量推断、多编码合并、售罄标记 |
 | `test_solver.py` | 中文需求解析、配额推算、券与促销归一化、参数链规则、求解器预算/忌口/主食配额/可复现性、团餐 gmServiceCode、套餐营养拆解与名称不一致防护、取价失败报错、报告渲染 |
 | `test_skill_conformance.py` | Skill 形态合规:frontmatter 规范、触发词覆盖、参考文件存在性、脚本自举、必需文件齐全、声明的铁律与免责声明是否在册 |
+| `test_order.py` | 下单参数装配(场景参数链、takeWayCode/addressId/gmServiceCode)、三重安全闸门、金额闸门、**配送范围提前校验**、支付链接与支付卡片解析、订单状态渲染。全部使用假客户端,零网络副作用 |
 | `test_agent_entrypoints.py` | 真的把脚本当子进程跑:stdout 是纯 JSON、失败返回结构化信封、`--json` 落盘可用 |
 
 关键断言示例:
